@@ -55,6 +55,7 @@ function Connection:Disconnect()
 	end
 
 	self._signal = nil
+	setmetatable(self, nil)
 end
 
 function Connection:IsConnected()
@@ -120,9 +121,12 @@ function Signal:Fire(...)
 		return
 	end
 
+	local array = table.create(2)
+	array[1], array[2] = totalListeners, table.pack(...)
+
 	local id = self._id
 	self._id += 1
-	self._args[id] = {totalListeners, table.pack(...)}
+	self._args[id] = array
 	self._threads = 0
 	self._bindable:Fire(id)
 end
@@ -175,6 +179,7 @@ function Signal:Destroy()
 	self:DisconnectAll()
 	self:_clearProxy()
 	self._bindable:Destroy()
+	setmetatable(self, nil)
 end
 
 return Signal

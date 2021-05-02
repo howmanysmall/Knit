@@ -317,7 +317,7 @@ function Component:GetFromInstance(instance)
 	return self._instancesToObjects[instance]
 end
 
-function Component:GetFromID(id)
+function Component:GetFromId(id)
 	for _, v in ipairs(self._objects) do
 		if v._id == id then
 			return v
@@ -326,6 +326,8 @@ function Component:GetFromID(id)
 
 	return nil
 end
+
+Component.GetFromID = Component.GetFromId
 
 function Component:Filter(filterFunc)
 	return TableUtil.Filter(self._objects, filterFunc)
@@ -354,6 +356,7 @@ end
 
 function Component:Destroy()
 	self._janitor:Destroy()
+	setmetatable(self, nil)
 end
 
 return Component

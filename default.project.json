@@ -1,6 +1,13 @@
 {
-	"name": "Knit",
+	"name": "Knit-Publish",
 	"tree": {
-		"$path": "src"
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"$ignoreUnknownInstances": true,
+			"Knit": {
+				"$path": "src"
+			}
+		}
 	}
 }

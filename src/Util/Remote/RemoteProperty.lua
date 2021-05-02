@@ -100,6 +100,7 @@ end
 
 function RemoteProperty:Destroy()
 	self._object:Destroy()
+	setmetatable(self, nil)
 end
 
 return RemoteProperty

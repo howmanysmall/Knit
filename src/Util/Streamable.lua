@@ -71,6 +71,7 @@ end
 
 function Streamable:Destroy()
 	self._janitor:Destroy()
+	setmetatable(self, nil)
 end
 
 return Streamable

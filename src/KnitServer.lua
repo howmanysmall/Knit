@@ -110,14 +110,19 @@ function KnitServer.BindRemoteEvent(service, eventName, remoteEvent)
 	AddToRepFolder(service, re)
 end
 
+local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
+local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
+
 function KnitServer.BindRemoteFunction(service, funcName, func)
 	assert(service._knit_rf[funcName] == nil, "RemoteFunction \"" .. funcName .. "\" already exists")
+
 	local rf = Instance.new("RemoteFunction")
 	rf.Name = funcName
 	service._knit_rf[funcName] = rf
 	AddToRepFolder(service, rf)
+
 	function rf.OnServerInvoke(...)
-		return Ser.SerializeArgsAndUnpack(func(service.Client, Ser.DeserializeArgsAndUnpack(...)))
+		return Ser_SerializeArgsAndUnpack(func(service.Client, Ser_DeserializeArgsAndUnpack(...)))
 	end
 end
 
@@ -137,8 +142,8 @@ function KnitServer.Start()
 	local services = KnitServer.Services
 	return Promise.new(function(resolve)
 		-- Bind remotes:
-		for _, service in pairs(services) do
-			for k, v in pairs(service.Client) do
+		for _, service in next, services do
+			for k, v in next, service.Client do
 				if type(v) == "function" then
 					KnitServer.BindRemoteFunction(service, k, v)
 				elseif RemoteSignal.Is(v) then
@@ -153,12 +158,14 @@ function KnitServer.Start()
 
 		-- Init:
 		local promisesInitServices = {}
+		local length = 0
 		for _, service in next, services do
 			if type(service.KnitInit) == "function" then
-				table.insert(promisesInitServices, Promise.new(function(r)
+				length += 1
+				promisesInitServices[length] = Promise.new(function(r)
 					service:KnitInit()
 					r()
-				end))
+				end)
 			end
 		end
 
@@ -173,7 +180,6 @@ function KnitServer.Start()
 
 		startedComplete = true
 		onStartedComplete:Fire()
-
 		Thread.Spawn(function()
 			onStartedComplete:Destroy()
 		end)

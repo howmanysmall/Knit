@@ -1,0 +1,6 @@
+{
+	"name": "Knit",
+	"tree": {
+		"$path": "src"
+	}
+}

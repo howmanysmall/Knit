@@ -34,19 +34,23 @@ local started = false
 local startedComplete = false
 local onStartedComplete = Instance.new("BindableEvent")
 
+local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
+local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
+local Ser_SerializeArgs = Ser.SerializeArgs
+
 local function BuildService(serviceName, folder)
 	local service = {}
 	if folder:FindFirstChild("RF") then
 		for _, rf in ipairs(folder.RF:GetChildren()) do
 			if rf:IsA("RemoteFunction") then
 				service[rf.Name] = function(_, ...)
-					return Ser.DeserializeArgsAndUnpack(rf:InvokeServer(Ser.SerializeArgsAndUnpack(...)))
+					return Ser_DeserializeArgsAndUnpack(rf:InvokeServer(Ser_SerializeArgsAndUnpack(...)))
 				end
 
 				service[rf.Name .. "Promise"] = function(_, ...)
-					local args = Ser.SerializeArgs(...)
+					local args = Ser_SerializeArgs(...)
 					return Promise.new(function(resolve)
-						resolve(Ser.DeserializeArgsAndUnpack(rf:InvokeServer(table.unpack(args, 1, args.n))))
+						resolve(Ser_DeserializeArgsAndUnpack(rf:InvokeServer(table.unpack(args, 1, args.n))))
 					end)
 				end
 			end
@@ -108,12 +112,14 @@ function KnitClient.Start()
 	return Promise.new(function(resolve)
 		-- Init:
 		local promisesStartControllers = {}
+		local length = 0
 		for _, controller in next, controllers do
 			if type(controller.KnitInit) == "function" then
-				table.insert(promisesStartControllers, Promise.new(function(r)
+				length += 1
+				promisesStartControllers[length] = Promise.new(function(r)
 					controller:KnitInit()
 					r()
-				end))
+				end)
 			end
 		end
 

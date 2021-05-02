@@ -286,26 +286,26 @@ local function DecodeJSON(str)
 	return HttpService:JSONDecode(str)
 end
 
+TableUtil.Assign = Assign
 TableUtil.Copy = CopyTable
 TableUtil.CopyShallow = CopyTableShallow
-TableUtil.Sync = Sync
+TableUtil.DecodeJSON = DecodeJSON
+TableUtil.EncodeJSON = EncodeJSON
+TableUtil.Every = Every
+TableUtil.Extend = Extend
 TableUtil.FastRemove = FastRemove
 TableUtil.FastRemoveFirstValue = FastRemoveFirstValue
-TableUtil.Map = Map
 TableUtil.Filter = Filter
-TableUtil.Reduce = Reduce
-TableUtil.Assign = Assign
-TableUtil.Extend = Extend
-TableUtil.Reverse = Reverse
-TableUtil.Shuffle = Shuffle
+TableUtil.Find = Find
 TableUtil.Flat = Flat
 TableUtil.FlatMap = FlatMap
-TableUtil.Keys = Keys
-TableUtil.Find = Find
-TableUtil.Every = Every
-TableUtil.Some = Some
 TableUtil.IsEmpty = IsEmpty
-TableUtil.EncodeJSON = EncodeJSON
-TableUtil.DecodeJSON = DecodeJSON
+TableUtil.Keys = Keys
+TableUtil.Map = Map
+TableUtil.Reduce = Reduce
+TableUtil.Reverse = Reverse
+TableUtil.Shuffle = Shuffle
+TableUtil.Some = Some
+TableUtil.Sync = Sync
 
 return TableUtil

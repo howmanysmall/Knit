@@ -59,6 +59,8 @@ function ClientRemoteProperty:Destroy()
 	if self._isTable then
 		self.Changed:Destroy()
 	end
+
+	setmetatable(self, nil)
 end
 
 return ClientRemoteProperty

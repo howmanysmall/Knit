@@ -285,4 +285,24 @@ function Janitor.__index:LinkToInstances(...)
 	return ManualCleanup
 end
 
+--[[**
+	"Links" this Janitor to an Instance, such that the Janitor will `Cleanup` when the Instance is removed from the DataModel (not just `Destroyed`) and garbage collected. A Janitor may only be linked to one instance at a time, unless `AllowMultiple` is true. When called with a truthy `AllowMultiple` parameter, the Janitor will "link" the Instance without overwriting any previous links, and will also not be overwritable. When called with a falsy `AllowMultiple` parameter, the Janitor will overwrite the previous link which was also called with a falsy `AllowMultiple` parameter, if applicable.
+	@param [Instance] Object The instance you want to link the Janitor to.
+	@param [boolean?] AllowMultiple Whether or not to allow multiple links on the same Janitor.
+	@returns [RBXScriptConnection] A RBXScriptConnection that can be disconnected.
+**--]]
+function Janitor.__index:LinkToInstanceRemoval(Object: Instance, AllowMultiple: boolean?): RBXScriptConnection
+	local function AncestryChanged(_, Parent)
+		if not Parent then
+			self:Cleanup()
+		end
+	end
+
+	if AllowMultiple then
+		return self:Add(Object.AncestryChanged:Connect(AncestryChanged), "Disconnect")
+	else
+		return self:Add(Object.AncestryChanged:Connect(AncestryChanged), "Disconnect", LinkToInstanceIndex)
+	end
+end
+
 return Janitor

@@ -40,6 +40,7 @@ function EnumList.new(name, enums)
 				error("Unknown " .. name .. ": " .. tostring(k), 2)
 			end
 		end;
+
 		__newindex = function()
 			error("Cannot add new " .. name, 2)
 		end;

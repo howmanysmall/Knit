@@ -70,6 +70,9 @@ Connection.Destroy = Connection.Disconnect
 local ClientRemoteSignal = {}
 ClientRemoteSignal.__index = ClientRemoteSignal
 
+local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
+local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
+
 function ClientRemoteSignal.Is(object)
 	return type(object) == "table" and getmetatable(object) == ClientRemoteSignal
 end
@@ -85,16 +88,16 @@ function ClientRemoteSignal.new(remoteEvent)
 end
 
 function ClientRemoteSignal:Fire(...)
-	self._remote:FireServer(Ser.SerializeArgsAndUnpack(...))
+	self._remote:FireServer(Ser_SerializeArgsAndUnpack(...))
 end
 
 function ClientRemoteSignal:Wait()
-	return Ser.DeserializeArgsAndUnpack(self._remote.OnClientEvent:Wait())
+	return Ser_DeserializeArgsAndUnpack(self._remote.OnClientEvent:Wait())
 end
 
 function ClientRemoteSignal:Connect(handler)
 	local connection = Connection.new(self, self._remote.OnClientEvent:Connect(function(...)
-		handler(Ser.DeserializeArgsAndUnpack(...))
+		handler(Ser_DeserializeArgsAndUnpack(...))
 	end))
 
 	table.insert(self._connections, connection)
@@ -110,6 +113,7 @@ function ClientRemoteSignal:Destroy()
 
 	self._connections = nil
 	self._remote = nil
+	setmetatable(self, nil)
 end
 
 return ClientRemoteSignal

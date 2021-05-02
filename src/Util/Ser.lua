@@ -32,10 +32,10 @@ local Ser = {}
 
 Ser.Classes = {
 	Option = {
+		Deserialize = Option.Deserialize;
 		Serialize = function(opt)
 			return opt:Serialize()
 		end;
-		Deserialize = Option.Deserialize;
 	};
 }
 
@@ -53,8 +53,10 @@ function Ser.SerializeArgs(...)
 	return args
 end
 
+local Ser_SerializeArgs = Ser.SerializeArgs
+
 function Ser.SerializeArgsAndUnpack(...)
-	local args = Ser.SerializeArgs(...)
+	local args = Ser_SerializeArgs(...)
 	return table.unpack(args, 1, args.n)
 end
 
@@ -72,8 +74,10 @@ function Ser.DeserializeArgs(...)
 	return args
 end
 
+local Ser_DeserializeArgs = Ser.DeserializeArgs
+
 function Ser.DeserializeArgsAndUnpack(...)
-	local args = Ser.DeserializeArgs(...)
+	local args = Ser_DeserializeArgs(...)
 	return table.unpack(args, 1, args.n)
 end
 

@@ -1,8 +1,7 @@
 return function()
-
 	local Knit = require(game:GetService("ReplicatedStorage").Knit)
 	local Component = require(Knit.Util.Component)
-	local Maid = require(Knit.Util.Maid)
+	local Janitor = require(Knit.Util.Janitor)
 	local Promise = require(Knit.Util.Promise)
 
 	local CollectionService = game:GetService("CollectionService")
@@ -25,7 +24,7 @@ return function()
 	TestComponentMain.Tag = TAG
 	function TestComponentMain.new(_instance)
 		local self = setmetatable({}, TestComponentMain)
-		self._maid = Maid.new()
+		self._janitor = Janitor.new()
 		return self
 	end
 	function TestComponentMain:HeartbeatUpdate()
@@ -44,7 +43,7 @@ return function()
 		self.DidDeinit = true
 	end
 	function TestComponentMain:Destroy()
-		self._maid:Destroy()
+		self._janitor:Destroy()
 	end
 
 	beforeAll(function()
@@ -64,7 +63,6 @@ return function()
 	end)
 
 	describe("Component", function()
-
 		it("should be able to get component from tag", function()
 			local TestComponent = Component.FromTag(TAG)
 			expect(TestComponent).to.be.ok()
@@ -100,7 +98,7 @@ return function()
 
 		it("should filter", function()
 			local TestComponent = Component.FromTag(TAG)
-			for i = 1,10 do
+			for i = 1, 10 do
 				local instance = CreateTaggedInstance()
 				instance:SetAttribute("SomeNumber", i)
 			end
@@ -114,7 +112,7 @@ return function()
 		it("should wait for component by instance", function()
 			local TestComponent = Component.FromTag(TAG)
 			local instance = CreateTaggedInstance()
-			local success, obj = TestComponent:WaitFor(instance):Await()
+			local success, obj = TestComponent:WaitFor(instance):Wait()
 			expect(success).to.equal(true)
 			expect(obj).to.be.ok()
 		end)
@@ -123,7 +121,7 @@ return function()
 			local TestComponent = Component.FromTag(TAG)
 			local instance = CreateTaggedInstance()
 			instance.Name = "SomeUniqueInstanceNameForKnitTest"
-			local success, obj = TestComponent:WaitFor(instance.Name):Await()
+			local success, obj = TestComponent:WaitFor(instance.Name):Wait()
 			expect(success).to.equal(true)
 			expect(obj).to.be.ok()
 		end)
@@ -131,39 +129,41 @@ return function()
 		it("should run all runtime updates", function()
 			local TestComponent = Component.FromTag(TAG)
 			local instance = CreateTaggedInstance()
-			local success, obj = TestComponent:WaitFor(instance):Await()
+			local success, obj = TestComponent:WaitFor(instance):Wait()
 			expect(success).to.equal(true)
 			local runtimeSuccess = Promise.new(function(resolve, _reject, onCancel)
 				local handle
 				handle = game:GetService("RunService").Heartbeat:Connect(function()
-					if (obj.DidHeartbeatUpdate and obj.DidSteppedUpdate and obj.DidRenderUpdate) then
+					if obj.DidHeartbeatUpdate and obj.DidSteppedUpdate and obj.DidRenderUpdate then
 						resolve()
 					end
 				end)
-				onCancel(function() handle:Disconnect() end)
-			end):Timeout(5):Await()
+				onCancel(function()
+					handle:Disconnect()
+				end)
+			end):Timeout(5):Wait()
 			expect(runtimeSuccess).to.equal(true)
 		end)
 
 		it("should run init and deinit methods", function()
 			local TestComponent = Component.FromTag(TAG)
 			local instance = CreateTaggedInstance()
-			local success, obj = TestComponent:WaitFor(instance):Await()
+			local success, obj = TestComponent:WaitFor(instance):Wait()
 			expect(success).to.equal(true)
 			local initDeinitSuccess = Promise.new(function(resolve, _reject, onCancel)
 				local handle
 				handle = game:GetService("RunService").Heartbeat:Connect(function()
-					if (obj.DidDeinit) then
+					if obj.DidDeinit then
 						resolve()
-					elseif (obj.DidInit and instance.Parent) then
+					elseif obj.DidInit and instance.Parent then
 						instance:Destroy()
 					end
 				end)
-				onCancel(function() handle:Disconnect() end)
-			end):Timeout(5):Await()
+				onCancel(function()
+					handle:Disconnect()
+				end)
+			end):Timeout(5):Wait()
 			expect(initDeinitSuccess).to.equal(true)
 		end)
-
 	end)
-
 end

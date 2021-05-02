@@ -1,5 +1,4 @@
 return function()
-
 	local Knit = require(game:GetService("ReplicatedStorage").Knit)
 	local Streamable = require(Knit.Util.Streamable)
 	local StreamableUtil = require(Knit.Util.StreamableUtil)
@@ -30,17 +29,16 @@ return function()
 	end)
 
 	describe("Compound", function()
-
 		it("should capture multiple streams", function()
 			local s1 = Streamable.new(instanceFolder, "ABC")
 			local s2 = Streamable.new(instanceFolder, "XYZ")
 			local observe = 0
 			local cleaned = 0
-			StreamableUtil.Compound({S1 = s1; S2 = s2}, function(_streamables, maid)
+			StreamableUtil.Compound({S1 = s1, S2 = s2}, function(_streamables, janitor)
 				observe += 1
-				maid:GiveTask(function()
+				janitor:Add(function()
 					cleaned += 1
-				end)
+				end, true)
 			end)
 			local i1 = CreateInstance("ABC")
 			local i2 = CreateInstance("XYZ")
@@ -59,7 +57,5 @@ return function()
 			s1:Destroy()
 			s2:Destroy()
 		end)
-
 	end)
-
 end

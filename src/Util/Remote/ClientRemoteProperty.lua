@@ -13,16 +13,14 @@
 
 --]]
 
-
-local IS_SERVER = game:GetService("RunService"):IsServer()
+local RunService = game:GetService("RunService")
 local Signal = require(script.Parent.Parent.Signal)
+local IS_SERVER = RunService:IsServer()
 
 local ClientRemoteProperty = {}
 ClientRemoteProperty.__index = ClientRemoteProperty
 
-
 function ClientRemoteProperty.new(object)
-
 	assert(not IS_SERVER, "ClientRemoteProperty can only be created on the client")
 
 	local self = setmetatable({
@@ -35,12 +33,13 @@ function ClientRemoteProperty.new(object)
 		self._value = v
 	end
 
-	if (self._isTable) then
+	if self._isTable then
 		self.Changed = Signal.new()
 		self._change = object.OnClientEvent:Connect(function(tbl)
 			SetValue(tbl)
 			self.Changed:Fire(tbl)
 		end)
+
 		SetValue(object.TableRequest:InvokeServer())
 	else
 		SetValue(object.Value)
@@ -49,21 +48,17 @@ function ClientRemoteProperty.new(object)
 	end
 
 	return self
-
 end
-
 
 function ClientRemoteProperty:Get()
 	return self._value
 end
 
-
 function ClientRemoteProperty:Destroy()
 	self._change:Disconnect()
-	if (self._isTable) then
+	if self._isTable then
 		self.Changed:Destroy()
 	end
 end
-
 
 return ClientRemoteProperty

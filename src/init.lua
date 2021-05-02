@@ -1,4 +1,5 @@
-if (game:GetService("RunService"):IsServer()) then
+local RunService = game:GetService("RunService")
+if RunService:IsServer() then
 	return require(script.KnitServer)
 else
 	script.KnitServer:Destroy()

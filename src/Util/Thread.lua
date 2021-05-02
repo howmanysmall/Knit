@@ -108,18 +108,17 @@
 
 --]]
 
-
+local RunService = game:GetService("RunService")
 local EnumList = require(script.Parent.EnumList)
 
 local Thread = {}
 
-local heartbeat = game:GetService("RunService").Heartbeat
+local heartbeat = RunService.Heartbeat
 
 Thread.DelayRepeatBehavior = EnumList.new("DelayRepeatBehavior", {
 	"Delayed";
 	"Immediate";
 })
-
 
 function Thread.SpawnNow(func, ...)
 	--[[
@@ -131,11 +130,13 @@ function Thread.SpawnNow(func, ...)
 	--]]
 	local args = table.pack(...)
 	local bindable = Instance.new("BindableEvent")
-	bindable.Event:Connect(function() func(table.unpack(args, 1, args.n)) end)
+	bindable.Event:Connect(function()
+		func(table.unpack(args, 1, args.n))
+	end)
+
 	bindable:Fire()
 	bindable:Destroy()
 end
-
 
 function Thread.Spawn(func, ...)
 	local args = table.pack(...)
@@ -144,41 +145,39 @@ function Thread.Spawn(func, ...)
 		hb:Disconnect()
 		func(table.unpack(args, 1, args.n))
 	end)
+
 	return hb
 end
 
-
 function Thread.Delay(waitTime, func, ...)
 	local args = table.pack(...)
-	local executeTime = (time() + waitTime)
+	local executeTime = time() + waitTime
 	local hb
 	hb = heartbeat:Connect(function()
-		if (time() >= executeTime) then
+		if time() >= executeTime then
 			hb:Disconnect()
 			func(table.unpack(args, 1, args.n))
 		end
 	end)
+
 	return hb
 end
-
 
 function Thread.DelayRepeat(intervalTime, func, behavior, ...)
 	local args = table.pack(...)
-	if (behavior == nil) then
+	if behavior == nil then
 		behavior = Thread.DelayRepeatBehavior.Delayed
 	end
+
 	assert(Thread.DelayRepeatBehavior:Is(behavior), "Invalid behavior")
-	local immediate = (behavior == Thread.DelayRepeatBehavior.Immediate)
-	local nextExecuteTime = (time() + (immediate and 0 or intervalTime))
-	local hb
-	hb = heartbeat:Connect(function()
-		if (time() >= nextExecuteTime) then
-			nextExecuteTime = (time() + intervalTime)
+	local immediate = behavior == Thread.DelayRepeatBehavior.Immediate
+	local nextExecuteTime = time() + (immediate and 0 or intervalTime)
+	return heartbeat:Connect(function()
+		if time() >= nextExecuteTime then
+			nextExecuteTime = time() + intervalTime
 			func(table.unpack(args, 1, args.n))
 		end
 	end)
-	return hb
 end
-
 
 return Thread

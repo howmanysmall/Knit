@@ -17,25 +17,24 @@
 
 --]]
 
-
 local Symbol = require(script.Parent.Symbol)
 
 local EnumList = {}
 
-
 function EnumList.new(name, enums)
 	local scope = Symbol.new(name)
 	local enumItems = {}
-	for _,enumName in ipairs(enums) do
+	for _, enumName in ipairs(enums) do
 		enumItems[enumName] = Symbol.new(enumName, scope)
 	end
-	local self = setmetatable({
+
+	return setmetatable({
 		_scope = scope;
 	}, {
-		__index = function(_t, k)
-			if (enumItems[k]) then
+		__index = function(_, k)
+			if enumItems[k] then
 				return enumItems[k]
-			elseif (EnumList[k]) then
+			elseif EnumList[k] then
 				return EnumList[k]
 			else
 				error("Unknown " .. name .. ": " .. tostring(k), 2)
@@ -45,13 +44,10 @@ function EnumList.new(name, enums)
 			error("Cannot add new " .. name, 2)
 		end;
 	})
-	return self
 end
-
 
 function EnumList:Is(obj)
 	return Symbol.IsInScope(obj, self._scope)
 end
-
 
 return EnumList

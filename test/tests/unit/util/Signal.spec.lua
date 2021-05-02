@@ -1,21 +1,23 @@
 local function AwaitCondition(predicate, timeout)
 	local start = os.clock()
 	timeout = (timeout or 10)
-	while (true) do
-		if (predicate()) then return true end
-		if ((os.clock() - start) > timeout) then return false end
+	while true do
+		if predicate() then
+			return true
+		end
+		if (os.clock() - start) > timeout then
+			return false
+		end
 		wait()
 	end
 end
 
 return function()
-
 	local Knit = require(game:GetService("ReplicatedStorage").Knit)
 	local Signal = require(Knit.Util.Signal)
-	local Maid = require(Knit.Util.Maid)
+	local Janitor = require(Knit.Util.Janitor)
 
 	describe("Constructor", function()
-
 		it("should create a new signal and fire it", function()
 			local signal = Signal.new()
 			expect(Signal.Is(signal)).to.equal(true)
@@ -28,13 +30,14 @@ return function()
 			signal:Destroy()
 		end)
 
-		it("should create a new signal and clean it up with a maid", function()
-			local maid = Maid.new()
-			local signal = Signal.new(maid)
+		it("should create a new signal and clean it up with a janitor", function()
+			local janitor = Janitor.new()
+			local signal = Signal.new(janitor)
 			expect(Signal.Is(signal)).to.equal(true)
-			signal:Connect(function() end)
+			signal:Connect(function()
+			end)
 			expect(#signal._connections).to.equal(1)
-			maid:Destroy()
+			janitor:Destroy()
 			expect(#signal._connections).to.equal(0)
 			signal:Destroy()
 		end)
@@ -46,14 +49,14 @@ return function()
 			signal:Connect(function()
 				fired = true
 			end)
-			expect(AwaitCondition(function() return fired end, 2)).to.equal(true)
+			expect(AwaitCondition(function()
+				return fired
+			end, 2)).to.equal(true)
 			signal:Destroy()
 		end)
-
 	end)
 
 	describe("Fire", function()
-
 		it("should be able to fire primitive argument", function()
 			local signal = Signal.new()
 			local send = 10
@@ -62,7 +65,9 @@ return function()
 				value = v
 			end)
 			signal:Fire(send)
-			expect(AwaitCondition(function() return (send == value) end, 1)).to.equal(true)
+			expect(AwaitCondition(function()
+				return (send == value)
+			end, 1)).to.equal(true)
 			signal:Destroy()
 		end)
 
@@ -74,14 +79,14 @@ return function()
 				value = v
 			end)
 			signal:Fire(send)
-			expect(AwaitCondition(function() return (send == value) end, 1)).to.equal(true)
+			expect(AwaitCondition(function()
+				return (send == value)
+			end, 1)).to.equal(true)
 			signal:Destroy()
 		end)
-
 	end)
 
 	describe("Wait", function()
-
 		it("should be able to wait for a signal to fire", function()
 			local signal = Signal.new()
 			spawn(function()
@@ -93,32 +98,30 @@ return function()
 			expect(n3).to.equal(30)
 			signal:Destroy()
 		end)
-
 	end)
 
 	describe("WaitPromise", function()
-
 		it("should wait for a signal using a promise", function()
 			local signal = Signal.new()
 			spawn(function()
 				signal:Fire(50, 80, 100)
 			end)
-			local success, n1, n2, n3 = signal:WaitPromise():Await()
+			local success, n1, n2, n3 = signal:WaitPromise():Wait()
 			expect(success).to.equal(true)
 			expect(n1).to.equal(50)
 			expect(n2).to.equal(80)
 			expect(n3).to.equal(100)
 			signal:Destroy()
 		end)
-
 	end)
 
 	describe("DisconnectAll", function()
-
 		it("should disconnect all connections", function()
 			local signal = Signal.new()
-			local con1 = signal:Connect(function() end)
-			local con2 = signal:Connect(function() end)
+			local con1 = signal:Connect(function()
+			end)
+			local con2 = signal:Connect(function()
+			end)
 			expect(#signal._connections).to.equal(2)
 			expect(con1:IsConnected()).to.equal(true)
 			expect(con2:IsConnected()).to.equal(true)
@@ -128,14 +131,13 @@ return function()
 			expect(con2:IsConnected()).to.equal(false)
 			signal:Destroy()
 		end)
-
 	end)
 
 	describe("Disconnect", function()
-
 		it("should disconnect connection", function()
 			local signal = Signal.new()
-			local con = signal:Connect(function() end)
+			local con = signal:Connect(function()
+			end)
 			expect(#signal._connections).to.equal(1)
 			expect(con:IsConnected()).to.equal(true)
 			con:Disconnect()
@@ -143,7 +145,5 @@ return function()
 			expect(con:IsConnected()).to.equal(false)
 			signal:Destroy()
 		end)
-
 	end)
-
 end

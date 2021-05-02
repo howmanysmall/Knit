@@ -75,43 +75,42 @@
 
 --]]
 
-
-local Maid = require(script.Parent.Maid)
-local Signal = require(script.Parent.Signal)
-local Promise = require(script.Parent.Promise)
-local Thread = require(script.Parent.Thread)
-local TableUtil = require(script.Parent.TableUtil)
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
+
+local Janitor = require(script.Parent.Janitor)
+local Promise = require(script.Parent.Promise)
+local Signal = require(script.Parent.Signal)
+local TableUtil = require(script.Parent.TableUtil)
+local Thread = require(script.Parent.Thread)
 
 local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
 
 -- Components will only work on instances parented under these descendants:
-local DESCENDANT_WHITELIST = {workspace, Players}
+local DESCENDANT_WHITELIST = {Workspace, Players}
 
 local Component = {}
 Component.__index = Component
 
 local componentsByTag = {}
 
-
 local function IsDescendantOfWhitelist(instance)
-	for _,v in ipairs(DESCENDANT_WHITELIST) do
-		if (instance:IsDescendantOf(v)) then
+	for _, v in ipairs(DESCENDANT_WHITELIST) do
+		if instance:IsDescendantOf(v) then
 			return true
 		end
 	end
+
 	return false
 end
-
 
 function Component.FromTag(tag)
 	return componentsByTag[tag]
 end
-
 
 function Component.Auto(folder)
 	local function Setup(moduleScript)
@@ -120,175 +119,183 @@ function Component.Auto(folder)
 		assert(type(m.Tag) == "string", "Expected .Tag property")
 		Component.new(m.Tag, m, m.RenderPriority)
 	end
-	for _,v in ipairs(folder:GetDescendants()) do
-		if (v:IsA("ModuleScript")) then
+
+	for _, v in ipairs(folder:GetDescendants()) do
+		if v:IsA("ModuleScript") then
 			Setup(v)
 		end
 	end
+
 	folder.DescendantAdded:Connect(function(v)
-		if (v:IsA("ModuleScript")) then
+		if v:IsA("ModuleScript") then
 			Setup(v)
 		end
 	end)
 end
 
-
 function Component.new(tag, class, renderPriority)
-
 	assert(type(tag) == "string", "Argument #1 (tag) should be a string; got " .. type(tag))
 	assert(type(class) == "table", "Argument #2 (class) should be a table; got " .. type(class))
 	assert(type(class.new) == "function", "Class must contain a .new constructor function")
 	assert(type(class.Destroy) == "function", "Class must contain a :Destroy function")
 	assert(componentsByTag[tag] == nil, "Component already bound to this tag")
 
-	local self = setmetatable({}, Component)
+	local self = setmetatable({
+		Added = Signal.new();
+		Removed = Signal.new();
 
-	self.Added = Signal.new()
-	self.Removed = Signal.new()
+		_janitor = Janitor.new();
+		_lifecycleJanitor = nil;
 
-	self._maid = Maid.new()
-	self._lifecycleMaid = Maid.new()
-	self._tag = tag
-	self._class = class
-	self._objects = {}
-	self._instancesToObjects = {}
-	self._hasHeartbeatUpdate = (type(class.HeartbeatUpdate) == "function")
-	self._hasSteppedUpdate = (type(class.SteppedUpdate) == "function")
-	self._hasRenderUpdate = (type(class.RenderUpdate) == "function")
-	self._hasInit = (type(class.Init) == "function")
-	self._hasDeinit = (type(class.Deinit) == "function")
-	self._renderPriority = renderPriority or Enum.RenderPriority.Last.Value
-	self._lifecycle = false
-	self._nextId = 0
+		_tag = tag;
+		_class = class;
+		_objects = {};
+		_instancesToObjects = {};
+		_hasHeartbeatUpdate = type(class.HeartbeatUpdate) == "function";
+		_hasSteppedUpdate = type(class.SteppedUpdate) == "function";
+		_hasRenderUpdate = type(class.RenderUpdate) == "function";
+		_hasInit = type(class.Init) == "function";
+		_hasDeinit = type(class.Deinit) == "function";
+		_renderPriority = renderPriority or Enum.RenderPriority.Last.Value;
+		_lifecycle = false;
+		_nextId = 0;
+	}, Component)
 
-	self._maid:GiveTask(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
-		if (IsDescendantOfWhitelist(instance)) then
+	self._lifecycleJanitor = self._janitor:Add(Janitor.new(), "Destroy")
+
+	self._janitor:Add(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
+		if IsDescendantOfWhitelist(instance) then
 			self:_instanceAdded(instance)
 		end
-	end))
+	end), "Disconnect")
 
-	self._maid:GiveTask(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
+	self._janitor:Add(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
 		self:_instanceRemoved(instance)
-	end))
-
-	self._maid:GiveTask(self._lifecycleMaid)
+	end), "Disconnect")
 
 	do
 		local b = Instance.new("BindableEvent")
-		for _,instance in ipairs(CollectionService:GetTagged(tag)) do
-			if (IsDescendantOfWhitelist(instance)) then
+		for _, instance in ipairs(CollectionService:GetTagged(tag)) do
+			if IsDescendantOfWhitelist(instance) then
 				local c = b.Event:Connect(function()
 					self:_instanceAdded(instance)
 				end)
+
 				b:Fire()
 				c:Disconnect()
 			end
 		end
+
 		b:Destroy()
 	end
 
 	componentsByTag[tag] = self
-	self._maid:GiveTask(function()
+	self._janitor:Add(function()
 		componentsByTag[tag] = nil
-	end)
+	end, true)
 
 	return self
-
 end
-
 
 function Component:_startHeartbeatUpdate()
 	local all = self._objects
-	self._heartbeatUpdate = RunService.Heartbeat:Connect(function(dt)
-		for _,v in ipairs(all) do
+	self._heartbeatUpdate = self._lifecycleJanitor:Add(RunService.Heartbeat:Connect(function(dt)
+		for _, v in ipairs(all) do
 			v:HeartbeatUpdate(dt)
 		end
-	end)
-	self._lifecycleMaid:GiveTask(self._heartbeatUpdate)
+	end), "Disconnect")
 end
-
 
 function Component:_startSteppedUpdate()
 	local all = self._objects
-	self._steppedUpdate = RunService.Stepped:Connect(function(_, dt)
-		for _,v in ipairs(all) do
+	self._steppedUpdate = self._lifecycleJanitor:Add(RunService.Stepped:Connect(function(_, dt)
+		for _, v in ipairs(all) do
 			v:SteppedUpdate(dt)
 		end
-	end)
-	self._lifecycleMaid:GiveTask(self._steppedUpdate)
+	end), "Disconnect")
 end
-
 
 function Component:_startRenderUpdate()
 	local all = self._objects
-	self._renderName = (self._tag .. "RenderUpdate")
+	self._renderName = self._tag .. "RenderUpdate"
 	RunService:BindToRenderStep(self._renderName, self._renderPriority, function(dt)
-		for _,v in ipairs(all) do
+		for _, v in ipairs(all) do
 			v:RenderUpdate(dt)
 		end
 	end)
-	self._lifecycleMaid:GiveTask(function()
-		RunService:UnbindFromRenderStep(self._renderName)
-	end)
-end
 
+	self._lifecycleJanitor:Add(function()
+		RunService:UnbindFromRenderStep(self._renderName)
+	end, true)
+end
 
 function Component:_startLifecycle()
 	self._lifecycle = true
-	if (self._hasHeartbeatUpdate) then
+	if self._hasHeartbeatUpdate then
 		self:_startHeartbeatUpdate()
 	end
-	if (self._hasSteppedUpdate) then
+
+	if self._hasSteppedUpdate then
 		self:_startSteppedUpdate()
 	end
-	if (self._hasRenderUpdate) then
+
+	if self._hasRenderUpdate then
 		self:_startRenderUpdate()
 	end
 end
 
-
 function Component:_stopLifecycle()
 	self._lifecycle = false
-	self._lifecycleMaid:DoCleaning()
+	self._lifecycleJanitor:Cleanup()
 end
 
-
 function Component:_instanceAdded(instance)
-	if (self._instancesToObjects[instance]) then return end
-	if (not self._lifecycle) then
+	if self._instancesToObjects[instance] then
+		return
+	end
+
+	if not self._lifecycle then
 		self:_startLifecycle()
 	end
-	self._nextId = (self._nextId + 1)
-	local id = (self._tag .. tostring(self._nextId))
-	if (IS_SERVER) then
+
+	self._nextId += 1
+	local id = self._tag .. tostring(self._nextId)
+	if IS_SERVER then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
 	end
+
 	local obj = self._class.new(instance)
 	obj.Instance = instance
 	obj._id = id
 	self._instancesToObjects[instance] = obj
 	table.insert(self._objects, obj)
-	if (self._hasInit) then
+
+	if self._hasInit then
 		Thread.Spawn(function()
-			if (self._instancesToObjects[instance] ~= obj) then return end
+			if self._instancesToObjects[instance] ~= obj then
+				return
+			end
+
 			obj:Init()
 		end)
 	end
+
 	self.Added:Fire(obj)
 	return obj
 end
 
-
 function Component:_instanceRemoved(instance)
 	self._instancesToObjects[instance] = nil
-	for i,obj in ipairs(self._objects) do
-		if (obj.Instance == instance) then
-			if (self._hasDeinit) then
+	for i, obj in ipairs(self._objects) do
+		if obj.Instance == instance then
+			if self._hasDeinit then
 				obj:Deinit()
 			end
-			if (IS_SERVER and instance.Parent and instance:GetAttribute(ATTRIBUTE_ID_NAME) ~= nil) then
+
+			if IS_SERVER and instance.Parent and instance:GetAttribute(ATTRIBUTE_ID_NAME) ~= nil then
 				instance:SetAttribute(ATTRIBUTE_ID_NAME, nil)
 			end
+
 			self.Removed:Fire(obj)
 			obj:Destroy()
 			obj._destroyed = true
@@ -296,47 +303,46 @@ function Component:_instanceRemoved(instance)
 			break
 		end
 	end
-	if (#self._objects == 0 and self._lifecycle) then
+
+	if #self._objects == 0 and self._lifecycle then
 		self:_stopLifecycle()
 	end
 end
-
 
 function Component:GetAll()
 	return TableUtil.CopyShallow(self._objects)
 end
 
-
 function Component:GetFromInstance(instance)
 	return self._instancesToObjects[instance]
 end
 
-
 function Component:GetFromID(id)
-	for _,v in ipairs(self._objects) do
-		if (v._id == id) then
+	for _, v in ipairs(self._objects) do
+		if v._id == id then
 			return v
 		end
 	end
+
 	return nil
 end
-
 
 function Component:Filter(filterFunc)
 	return TableUtil.Filter(self._objects, filterFunc)
 end
 
-
 function Component:WaitFor(instance, timeout)
-	local isName = (type(instance) == "string")
+	local isName = type(instance) == "string"
 	local function IsInstanceValid(obj)
-		return ((isName and obj.Instance.Name == instance) or ((not isName) and obj.Instance == instance))
+		return (isName and obj.Instance.Name == instance) or (not isName and obj.Instance == instance)
 	end
-	for _,obj in ipairs(self._objects) do
-		if (IsInstanceValid(obj)) then
+
+	for _, obj in ipairs(self._objects) do
+		if IsInstanceValid(obj) then
 			return Promise.Resolve(obj)
 		end
 	end
+
 	local lastObj = nil
 	return Promise.FromEvent(self.Added, function(obj)
 		lastObj = obj
@@ -346,10 +352,8 @@ function Component:WaitFor(instance, timeout)
 	end):Timeout(timeout or DEFAULT_WAIT_FOR_TIMEOUT)
 end
 
-
 function Component:Destroy()
-	self._maid:Destroy()
+	self._janitor:Destroy()
 end
-
 
 return Component

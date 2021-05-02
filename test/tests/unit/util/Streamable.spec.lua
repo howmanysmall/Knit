@@ -1,5 +1,4 @@
 return function()
-
 	local Knit = require(game:GetService("ReplicatedStorage").Knit)
 	local Streamable = require(Knit.Util.Streamable)
 
@@ -29,17 +28,16 @@ return function()
 	end)
 
 	describe("Streamable", function()
-
 		it("should detect instance that is immediately available", function()
 			local testInstance = CreateInstance("TestImmediate")
 			local streamable = Streamable.new(instanceFolder, "TestImmediate")
 			local observed = 0
 			local cleaned = 0
-			streamable:Observe(function(_instance, maid)
+			streamable:Observe(function(_instance, janitor)
 				observed += 1
-				maid:GiveTask(function()
+				janitor:Add(function()
 					cleaned += 1
-				end)
+				end, true)
 			end)
 			wait()
 			testInstance.Parent = nil
@@ -56,11 +54,11 @@ return function()
 			local streamable = Streamable.new(instanceFolder, "TestImmediate")
 			local observed = 0
 			local cleaned = 0
-			streamable:Observe(function(_instance, maid)
+			streamable:Observe(function(_instance, janitor)
 				observed += 1
-				maid:GiveTask(function()
+				janitor:Add(function()
 					cleaned += 1
-				end)
+				end, true)
 			end)
 			wait(0.1)
 			local testInstance = CreateInstance("TestImmediate")
@@ -74,7 +72,5 @@ return function()
 			expect(observed).to.equal(2)
 			expect(cleaned).to.equal(2)
 		end)
-
 	end)
-
 end

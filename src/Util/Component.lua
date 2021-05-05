@@ -4,22 +4,25 @@
 
 --[[
 
-	Component.Auto(folder)
+	Component.Auto(folder: Instance)
 		-> Create components automatically from descendant modules of this folder
 		-> Each module must have a '.Tag' string property
 		-> Each module optionally can have '.RenderPriority' number property
 
-	component = Component.FromTag(tag)
+	component = Component.FromTag(tag: string)
 		-> Retrieves an existing component from the tag name
 
-	component = Component.new(tag, class [, renderPriority])
+	Component.ObserveFromTag(tag: string, observer: (component: Component, janitor: Janitor) -> void): Janitor
+
+	component = Component.new(tag: string, class: table [, renderPriority: RenderPriority, requireComponents: {string}])
 		-> Creates a new component from the tag name, class module, and optional render priority
 
 	component:GetAll(): ComponentInstance[]
-	component:GetFromInstance(instance): ComponentInstance | nil
-	component:GetFromID(id): ComponentInstance | nil
-	component:Filter(filterFunc): ComponentInstance[]
+	component:GetFromInstance(instance: Instance): ComponentInstance | nil
+	component:GetFromID(id: number): ComponentInstance | nil
+	component:Filter(filterFunc: (comp: ComponentInstance) -> boolean): ComponentInstance[]
 	component:WaitFor(instanceOrName: Instance | string [, timeout: number = 60]): Promise<ComponentInstance>
+	component:Observe(instance: Instance, observer: (component: ComponentInstance, janitor: Janitor) -> void): Janitor
 	component:Destroy()
 
 	component.Added(obj: ComponentInstance)
@@ -98,6 +101,9 @@ Component.__index = Component
 
 local componentsByTag = {}
 
+local componentByTagCreated = Signal.new()
+local componentByTagDestroyed = Signal.new()
+
 local function IsDescendantOfWhitelist(instance)
 	for _, v in ipairs(DESCENDANT_WHITELIST) do
 		if instance:IsDescendantOf(v) then
@@ -112,12 +118,39 @@ function Component.FromTag(tag)
 	return componentsByTag[tag]
 end
 
+function Component.ObserveFromTag(tag, observer)
+	local janitor = Janitor.new()
+	local observeJanitor = janitor:Add(Janitor.new(), "Destroy")
+	local function OnCreated(component)
+		if component._tag == tag then
+			observer(component, observeJanitor)
+		end
+	end
+
+	local function OnDestroyed(component)
+		if component._tag == tag then
+			observeJanitor:Cleanup()
+		end
+	end
+
+	do
+		local component = Component.FromTag(tag)
+		if component then
+			Thread.SpawnNow(OnCreated, component)
+		end
+	end
+
+	janitor:Add(componentByTagCreated:Connect(OnCreated), "Disconnect")
+	janitor:Add(componentByTagDestroyed:Connect(OnDestroyed), "Disconnect")
+	return janitor
+end
+
 function Component.Auto(folder)
 	local function Setup(moduleScript)
 		local m = require(moduleScript)
 		assert(type(m) == "table", "Expected table for component")
 		assert(type(m.Tag) == "string", "Expected .Tag property")
-		Component.new(m.Tag, m, m.RenderPriority)
+		Component.new(m.Tag, m, m.RenderPriority, m.RequiredComponents)
 	end
 
 	for _, v in ipairs(folder:GetDescendants()) do
@@ -133,7 +166,7 @@ function Component.Auto(folder)
 	end)
 end
 
-function Component.new(tag, class, renderPriority)
+function Component.new(tag, class, renderPriority, requireComponents)
 	assert(type(tag) == "string", "Argument #1 (tag) should be a string; got " .. type(tag))
 	assert(type(class) == "table", "Argument #2 (class) should be a table; got " .. type(class))
 	assert(type(class.new) == "function", "Class must contain a .new constructor function")
@@ -141,12 +174,11 @@ function Component.new(tag, class, renderPriority)
 	assert(componentsByTag[tag] == nil, "Component already bound to this tag")
 
 	local self = setmetatable({
-		Added = Signal.new();
-		Removed = Signal.new();
+		Added = nil;
+		Removed = nil;
 
 		_janitor = Janitor.new();
 		_lifecycleJanitor = nil;
-
 		_tag = tag;
 		_class = class;
 		_objects = {};
@@ -157,41 +189,119 @@ function Component.new(tag, class, renderPriority)
 		_hasInit = type(class.Init) == "function";
 		_hasDeinit = type(class.Deinit) == "function";
 		_renderPriority = renderPriority or Enum.RenderPriority.Last.Value;
+		_requireComponents = requireComponents or {};
 		_lifecycle = false;
 		_nextId = 0;
 	}, Component)
 
 	self._lifecycleJanitor = self._janitor:Add(Janitor.new(), "Destroy")
+	self.Added = Signal.new(self._janitor)
+	self.Removed = Signal.new(self._janitor)
 
-	self._janitor:Add(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
-		if IsDescendantOfWhitelist(instance) then
-			self:_instanceAdded(instance)
-		end
-	end), "Disconnect")
+	local observeJanitor = self._janitor:Add(Janitor.new(), "Destroy")
 
-	self._janitor:Add(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
-		self:_instanceRemoved(instance)
-	end), "Disconnect")
-
-	do
-		local b = Instance.new("BindableEvent")
-		for _, instance in ipairs(CollectionService:GetTagged(tag)) do
-			if IsDescendantOfWhitelist(instance) then
-				local c = b.Event:Connect(function()
-					self:_instanceAdded(instance)
-				end)
-
-				b:Fire()
-				c:Disconnect()
+	local function ObserveTag()
+		local function HasRequiredComponents(instance)
+			for _, reqComp in ipairs(self._requireComponents) do
+				local comp = Component.FromTag(reqComp)
+				if comp:GetFromInstance(instance) == nil then
+					return false
+				end
 			end
+
+			return true
 		end
 
-		b:Destroy()
+		observeJanitor:Add(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
+			if IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance) then
+				self:_instanceAdded(instance)
+			end
+		end), "Disconnect")
+
+		observeJanitor:Add(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
+			self:_instanceRemoved(instance)
+		end), "Disconnect")
+
+		for _, reqComp in ipairs(self._requireComponents) do
+			local comp = Component.FromTag(reqComp)
+			observeJanitor:Add(comp.Added:Connect(function(obj)
+				if CollectionService:HasTag(obj.Instance, tag) and HasRequiredComponents(obj.Instance) then
+					self:_instanceAdded(obj.Instance)
+				end
+			end), "Disconnect")
+
+			observeJanitor:Add(comp.Removed:Connect(function(obj)
+				if CollectionService:HasTag(obj.Instance, tag) then
+					self:_instanceRemoved(obj.Instance)
+				end
+			end), "Disconnect")
+		end
+
+		observeJanitor:Add(function()
+			self:_stopLifecycle()
+			for instance in next, self._instancesToObjects do
+				self:_instanceRemoved(instance)
+			end
+		end, true)
+
+		do
+			local b = Instance.new("BindableEvent")
+			for _, instance in ipairs(CollectionService:GetTagged(tag)) do
+				if IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance) then
+					local c = b.Event:Connect(function()
+						self:_instanceAdded(instance)
+					end)
+
+					b:Fire()
+					c:Disconnect()
+				end
+			end
+
+			b:Destroy()
+		end
+	end
+
+	if #self._requireComponents == 0 then
+		ObserveTag()
+	else
+		-- Only observe tag when all required components are available:
+		local tagsReady = {}
+		for _, reqComp in ipairs(self._requireComponents) do
+			tagsReady[reqComp] = false
+		end
+
+		local function Check()
+			for _, ready in next, tagsReady do
+				if not ready then
+					return
+				end
+			end
+
+			ObserveTag()
+		end
+
+		local function Cleanup()
+			observeJanitor:Cleanup()
+		end
+
+		for _, requiredComponent in ipairs(self._requireComponents) do
+			tagsReady[requiredComponent] = false
+			self._janitor:Add(Component.ObserveFromTag(requiredComponent, function(_, janitor)
+				tagsReady[requiredComponent] = true
+				Check()
+				janitor:Add(function()
+					tagsReady[requiredComponent] = false
+					Cleanup()
+				end, true)
+			end), "Destroy")
+		end
 	end
 
 	componentsByTag[tag] = self
+	componentByTagCreated:Fire(self)
 	self._janitor:Add(function()
 		componentsByTag[tag] = nil
+		componentByTagDestroyed:Fire(self)
 	end, true)
 
 	return self
@@ -285,6 +395,10 @@ function Component:_instanceAdded(instance)
 end
 
 function Component:_instanceRemoved(instance)
+	if not self._instancesToObjects[instance] then
+		return
+	end
+
 	self._instancesToObjects[instance] = nil
 	for i, obj in ipairs(self._objects) do
 		if obj.Instance == instance then
@@ -352,6 +466,31 @@ function Component:WaitFor(instance, timeout)
 	end):Then(function()
 		return lastObj
 	end):Timeout(timeout or DEFAULT_WAIT_FOR_TIMEOUT)
+end
+
+function Component:Observe(instance, observer)
+	local janitor = Janitor.new()
+	local observeJanitor = janitor:Add(Janitor.new(), "Destroy")
+	janitor:Add(self.Added:Connect(function(obj)
+		if obj.Instance == instance then
+			observer(obj, observeJanitor)
+		end
+	end), "Disconnect")
+
+	janitor:Add(self.Removed:Connect(function(obj)
+		if obj.Instance == instance then
+			observeJanitor:Cleanup()
+		end
+	end), "Disconnect")
+
+	for _, obj in ipairs(self._objects) do
+		if obj.Instance == instance then
+			Thread.SpawnNow(observer, obj, observeJanitor)
+			break
+		end
+	end
+
+	return janitor
 end
 
 function Component:Destroy()

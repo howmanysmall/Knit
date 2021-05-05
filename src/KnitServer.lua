@@ -17,14 +17,14 @@ local KnitServer = {
 local knitRepServiceFolder = Instance.new("Folder")
 knitRepServiceFolder.Name = "Services"
 
-local Promise = require(KnitServer.Util.Promise)
-local Thread = require(KnitServer.Util.Thread)
-local Signal = require(KnitServer.Util.Signal)
 local Loader = require(KnitServer.Util.Loader)
-local Ser = require(KnitServer.Util.Ser)
-local RemoteSignal = require(KnitServer.Util.Remote.RemoteSignal)
+local Promise = require(KnitServer.Util.Promise)
 local RemoteProperty = require(KnitServer.Util.Remote.RemoteProperty)
+local RemoteSignal = require(KnitServer.Util.Remote.RemoteSignal)
+local Ser = require(KnitServer.Util.Ser)
+local Signal = require(KnitServer.Util.Signal)
 local TableUtil = require(KnitServer.Util.TableUtil)
+local Thread = require(KnitServer.Util.Thread)
 
 local started = false
 local startedComplete = false

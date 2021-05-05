@@ -14,16 +14,13 @@
 		Option.Some(anyNonNilValue): Option<any>
 		Option.Wrap(anyValue): Option<any>
 
-
 	STATIC FIELDS:
 
 		Option.None: Option<None>
 
-
 	STATIC METHODS:
 
 		Option.Is(obj): boolean
-
 
 	METHODS:
 
@@ -49,7 +46,6 @@
 	Option, which will indicate that the value might be nil, and should
 	be explicitly checked before using the value. This will help
 	prevent common bugs caused by nil values that can fail silently.
-
 
 	Example:
 

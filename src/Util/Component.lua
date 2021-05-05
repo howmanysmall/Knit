@@ -56,7 +56,6 @@
 		function MyComponent:Destroy()
 		end
 
-
 	A component is then registered like so:
 
 		local Component = require(Knit.Util.Component)
@@ -64,7 +63,6 @@
 		local tag = "MyComponent"
 
 		local myComponent = Component.new(tag, MyComponent)
-
 
 	Components can be listened and queried:
 

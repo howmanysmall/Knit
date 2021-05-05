@@ -59,6 +59,7 @@ function Connection:Disconnect()
 	end
 
 	self._event = nil
+	setmetatable(self, nil)
 end
 
 Connection.Destroy = Connection.Disconnect

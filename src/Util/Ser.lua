@@ -8,7 +8,6 @@
 	by Knit to automatically serialize/deserialize values passing
 	through remote functions and remote events.
 
-
 	Ser.Classes = {
 		[ClassName] = {
 			Serialize = (value) -> serializedValue

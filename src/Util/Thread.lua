@@ -59,7 +59,6 @@
 			delay. If set to Immediate, the function will fire
 			immediately before the first delay.
 
-
 	Examples:
 
 		Thread.Spawn(function()
@@ -84,7 +83,6 @@
 		end, Thread.DelayRepeatBehavior.Delayed)
 		wait(5)
 		repeatConnection:Disconnect()
-
 
 	Why:
 

@@ -8,7 +8,6 @@
 
 	enumList:Is(item)
 
-
 	Example:
 
 		direction = EnumList.new("Direction", {"Up", "Down", "Left", "Right"})

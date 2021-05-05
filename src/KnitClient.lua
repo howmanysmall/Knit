@@ -19,13 +19,13 @@ local KnitClient = {
 	Util = script.Parent.Util;
 }
 
-local Promise = require(KnitClient.Util.Promise)
-local Thread = require(KnitClient.Util.Thread)
-local Loader = require(KnitClient.Util.Loader)
-local Ser = require(KnitClient.Util.Ser)
-local ClientRemoteSignal = require(KnitClient.Util.Remote.ClientRemoteSignal)
 local ClientRemoteProperty = require(KnitClient.Util.Remote.ClientRemoteProperty)
+local ClientRemoteSignal = require(KnitClient.Util.Remote.ClientRemoteSignal)
+local Loader = require(KnitClient.Util.Loader)
+local Promise = require(KnitClient.Util.Promise)
+local Ser = require(KnitClient.Util.Ser)
 local TableUtil = require(KnitClient.Util.TableUtil)
+local Thread = require(KnitClient.Util.Thread)
 
 local services = {}
 local servicesFolder = script.Parent:WaitForChild("Services")

@@ -1,6 +1,7 @@
 -- Scheduler
 -- pobammer
 -- September 11, 2020
+-- This version is unsafe because it uses coroutines instead of BindableEvents. Should be faster though.
 
 local RunService = game:GetService("RunService")
 local FastEvent = require(script.Parent.Parent.FastEvent)

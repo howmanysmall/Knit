@@ -73,7 +73,6 @@ function RemoteProperty.new(value, overrideClass)
 	end
 
 	self:Set(value)
-
 	return self
 end
 

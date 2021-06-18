@@ -113,10 +113,7 @@ local Thread = {}
 
 local heartbeat = RunService.Heartbeat
 
-Thread.DelayRepeatBehavior = EnumList.new("DelayRepeatBehavior", {
-	"Delayed";
-	"Immediate";
-})
+Thread.DelayRepeatBehavior = EnumList.new("DelayRepeatBehavior", {"Delayed", "Immediate"})
 
 function Thread.SpawnNow(func, ...)
 	--[[
@@ -129,19 +126,21 @@ function Thread.SpawnNow(func, ...)
 	local args = table.pack(...)
 	local bindable = Instance.new("BindableEvent")
 	bindable.Event:Connect(function()
+		bindable:Destroy()
 		func(table.unpack(args, 1, args.n))
 	end)
 
 	bindable:Fire()
-	bindable:Destroy()
 end
 
 function Thread.Spawn(func, ...)
 	local args = table.pack(...)
 	local hb
 	hb = heartbeat:Connect(function()
-		hb:Disconnect()
-		func(table.unpack(args, 1, args.n))
+		if hb.Connected then
+			hb:Disconnect()
+			func(table.unpack(args, 1, args.n))
+		end
 	end)
 
 	return hb
@@ -152,7 +151,7 @@ function Thread.Delay(waitTime, func, ...)
 	local executeTime = time() + waitTime
 	local hb
 	hb = heartbeat:Connect(function()
-		if time() >= executeTime then
+		if time() >= executeTime and hb.Connected then
 			hb:Disconnect()
 			func(table.unpack(args, 1, args.n))
 		end
@@ -170,12 +169,16 @@ function Thread.DelayRepeat(intervalTime, func, behavior, ...)
 	assert(Thread.DelayRepeatBehavior:Is(behavior), "Invalid behavior")
 	local immediate = behavior == Thread.DelayRepeatBehavior.Immediate
 	local nextExecuteTime = time() + (immediate and 0 or intervalTime)
-	return heartbeat:Connect(function()
-		if time() >= nextExecuteTime then
+
+	local hb
+	hb = heartbeat:Connect(function()
+		if time() >= nextExecuteTime and hb.Connected then
 			nextExecuteTime = time() + intervalTime
 			func(table.unpack(args, 1, args.n))
 		end
 	end)
+
+	return hb
 end
 
 return Thread

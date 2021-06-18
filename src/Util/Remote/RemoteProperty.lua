@@ -35,6 +35,7 @@ local typeClassMap = {
 }
 
 local RemoteProperty = {}
+RemoteProperty.ClassName = "RemoteProperty"
 RemoteProperty.__index = RemoteProperty
 
 function RemoteProperty.Is(object)
@@ -100,6 +101,10 @@ end
 function RemoteProperty:Destroy()
 	self._object:Destroy()
 	setmetatable(self, nil)
+end
+
+function RemoteProperty:__tostring()
+	return "RemoteProperty"
 end
 
 return RemoteProperty

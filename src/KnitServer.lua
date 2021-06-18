@@ -9,9 +9,9 @@
 --]]
 
 local KnitServer = {
-	Version = script.Parent.Version.Value;
 	Services = {};
 	Util = script.Parent.Util;
+	Version = script.Parent.Version.Value;
 }
 
 local knitRepServiceFolder = Instance.new("Folder")

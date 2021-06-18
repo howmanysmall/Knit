@@ -25,6 +25,7 @@
 local Promise = require(script.Parent.Promise)
 
 local Connection = {}
+Connection.ClassName = "Connection"
 Connection.__index = Connection
 
 function Connection.new(signal, connection)
@@ -68,9 +69,14 @@ end
 
 Connection.Destroy = Connection.Disconnect
 
+function Connection:__tostring()
+	return "Connection"
+end
+
 --------------------------------------------
 
 local Signal = {}
+Signal.ClassName = "Signal"
 Signal.__index = Signal
 
 function Signal.new(janitor)
@@ -121,12 +127,9 @@ function Signal:Fire(...)
 		return
 	end
 
-	local array = table.create(2)
-	array[1], array[2] = totalListeners, table.pack(...)
-
 	local id = self._id
 	self._id += 1
-	self._args[id] = array
+	self._args[id] = {totalListeners, table.pack(...)}
 	self._threads = 0
 	self._bindable:Fire(id)
 end
@@ -180,6 +183,10 @@ function Signal:Destroy()
 	self:_clearProxy()
 	self._bindable:Destroy()
 	setmetatable(self, nil)
+end
+
+function Signal:__tostring()
+	return "Signal"
 end
 
 return Signal

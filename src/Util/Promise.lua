@@ -270,7 +270,7 @@ function Promise._new(traceback, callback, parent)
 end
 
 function Promise.new(executor)
-	return Promise._new(debug.traceback(nil, 2), executor or NOOP)
+	return Promise._new(debug.traceback(nil :: any, 2), executor or NOOP)
 end
 
 function Promise:__tostring()
@@ -281,11 +281,15 @@ end
 	Promise.new, except pcall on a new thread is automatic.
 ]]
 function Promise.defer(callback)
-	local traceback = debug.traceback(nil, 2)
+	local traceback = debug.traceback(nil :: any, 2)
 	local promise
 	promise = Promise._new(traceback, function(resolve, reject, onCancel)
 		local connection
 		connection = Promise._timeEvent:Connect(function()
+			if not connection.Connected then
+				return
+			end
+
 			connection:Disconnect()
 			local ok, result = runExecutor(traceback, callback, resolve, reject, onCancel)
 
@@ -306,7 +310,7 @@ Promise.async = Promise.defer
 ]]
 function Promise.resolve(...)
 	local values = table.pack(...)
-	return Promise._new(debug.traceback(nil, 2), function(resolve)
+	return Promise._new(debug.traceback(nil :: any, 2), function(resolve)
 		resolve(table.unpack(values, 1, values.n))
 	end)
 end
@@ -316,7 +320,7 @@ end
 ]]
 function Promise.reject(...)
 	local values = table.pack(...)
-	return Promise._new(debug.traceback(nil, 2), function(_, reject)
+	return Promise._new(debug.traceback(nil :: any, 2), function(_, reject)
 		reject(table.unpack(values, 1, values.n))
 	end)
 end
@@ -336,7 +340,7 @@ end
 	Begins a Promise chain, turning synchronous errors into rejections.
 ]]
 function Promise.try(...)
-	return Promise._try(debug.traceback(nil, 2), ...)
+	return Promise._try(debug.traceback(nil :: any, 2), ...)
 end
 
 --[[
@@ -351,7 +355,7 @@ function Promise._all(traceback, promises, amount)
 
 	-- We need to check that each value is a promise here so that we can produce
 	-- a proper error rather than a rejected promise with our error.
-	for i, promise in ipairs(promises) do
+	for i, promise in next, promises do
 		if not Promise.is(promise) then
 			error(string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.all", tostring(i)), 3)
 		end
@@ -424,34 +428,28 @@ function Promise._all(traceback, promises, amount)
 end
 
 function Promise.all(promises)
-	return Promise._all(debug.traceback(nil, 2), promises)
+	return Promise._all(debug.traceback(nil :: any, 2), promises)
 end
 
 function Promise.fold(list, callback, initialValue)
 	assert(type(list) == "table", "Bad argument #1 to Promise.fold: must be a table")
 	assert(type(callback) == "function", "Bad argument #2 to Promise.fold: must be a function")
 
-	local previousValue = initialValue
-	for index, element in ipairs(list) do
-		if Promise.is(previousValue) then
-			previousValue = previousValue:andThen(function(previousValueResolved)
-				return callback(previousValueResolved, element, index)
-			end)
-		else
-			previousValue = callback(previousValue, element, index)
-		end
-	end
-
-	return previousValue
+	local accumulator = Promise.resolve(initialValue)
+	return Promise.each(list, function(resolvedElement, i)
+		accumulator = accumulator:andThen(function(previousValueResolved)
+			return callback(previousValueResolved, resolvedElement, i)
+		end)
+	end):andThenReturn(accumulator)
 end
 
 function Promise.some(promises, amount)
 	assert(type(amount) == "number", "Bad argument #2 to Promise.some: must be a number")
-	return Promise._all(debug.traceback(nil, 2), promises, amount)
+	return Promise._all(debug.traceback(nil :: any, 2), promises, amount)
 end
 
 function Promise.any(promises)
-	return Promise._all(debug.traceback(nil, 2), promises, 1):andThen(function(values)
+	return Promise._all(debug.traceback(nil :: any, 2), promises, 1):andThen(function(values)
 		return values[1]
 	end)
 end
@@ -463,7 +461,7 @@ function Promise.allSettled(promises)
 
 	-- We need to check that each value is a promise here so that we can produce
 	-- a proper error rather than a rejected promise with our error.
-	for i, promise in ipairs(promises) do
+	for i, promise in next, promises do
 		if not Promise.is(promise) then
 			error(string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.allSettled", tostring(i)), 2)
 		end
@@ -474,7 +472,7 @@ function Promise.allSettled(promises)
 		return Promise.resolve({})
 	end
 
-	return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
+	return Promise._new(debug.traceback(nil :: any, 2), function(resolve, _, onCancel)
 		-- An array to contain our resolved values from the given promises.
 		local fates = {_fromAll = true}
 		local newPromises = table.create(#promises)
@@ -515,11 +513,11 @@ end
 function Promise.race(promises)
 	assert(type(promises) == "table", string.format(ERROR_NON_LIST, "Promise.race"))
 
-	for i, promise in ipairs(promises) do
+	for i, promise in next, promises do
 		assert(Promise.is(promise), string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.race", tostring(i)))
 	end
 
-	return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+	return Promise._new(debug.traceback(nil :: any, 2), function(resolve, reject, onCancel)
 		local newPromises = table.create(#promises)
 		local finished = false
 
@@ -563,7 +561,7 @@ function Promise.each(list, predicate)
 	assert(type(list) == "table", string.format(ERROR_NON_LIST, "Promise.each"))
 	assert(type(predicate) == "function", string.format(ERROR_NON_FUNCTION, "Promise.each"))
 
-	return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+	return Promise._new(debug.traceback(nil :: any, 2), function(resolve, reject, onCancel)
 		local results = {}
 		local promisesToCancel = {}
 
@@ -676,7 +674,7 @@ Promise.Is = Promise.is
 ]]
 function Promise.promisify(callback)
 	return function(...)
-		return Promise._try(debug.traceback(nil, 2), callback, ...)
+		return Promise._try(debug.traceback(nil :: any, 2), callback, ...)
 	end
 end
 
@@ -698,7 +696,7 @@ do
 			seconds = 1 / 60
 		end
 
-		return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
+		return Promise._new(debug.traceback(nil :: any, 2), function(resolve, _, onCancel)
 			local startTime = Promise._getTime()
 			local endTime = startTime + seconds
 
@@ -786,18 +784,17 @@ end
 	Rejects the promise after `seconds` seconds.
 ]]
 function Promise.prototype:timeout(seconds, rejectionValue)
-	local traceback = debug.traceback(nil, 2)
-
-	local array = table.create(2)
-	array[1], array[2] = Promise.delay(seconds):andThen(function()
-		return Promise.reject(rejectionValue == nil and Error.new({
-			context = string.format("Timeout of %d seconds exceeded.\n:timeout() called at:\n\n%s", seconds, traceback);
-			error = "Timed out";
-			kind = Error.Kind.TimedOut;
-		}) or rejectionValue)
-	end), self
-
-	return Promise.race(array)
+	local traceback = debug.traceback(nil :: any, 2)
+	return Promise.race({
+		Promise.delay(seconds):andThen(function()
+			return Promise.reject(rejectionValue == nil and Error.new({
+				context = string.format("Timeout of %d seconds exceeded.\n:timeout() called at:\n\n%s", seconds, traceback);
+				error = "Timed out";
+				kind = Error.Kind.TimedOut;
+			}) or rejectionValue)
+		end);
+		self;
+	})
 end
 
 function Promise.prototype:getStatus()
@@ -886,13 +883,13 @@ end
 
 function Promise.prototype:spread(successHandler)
 	assert(successHandler == nil or type(successHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:spread"))
-	return self:_andThen(debug.traceback(nil, 2), successHandler, nil, true)
+	return self:_andThen(debug.traceback(nil :: any, 2), successHandler, nil, true)
 end
 
 function Promise.prototype:andThen(successHandler, failureHandler)
 	assert(successHandler == nil or type(successHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
 	assert(failureHandler == nil or type(failureHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
-	return self:_andThen(debug.traceback(nil, 2), successHandler, failureHandler, false)
+	return self:_andThen(debug.traceback(nil :: any, 2), successHandler, failureHandler, false)
 end
 
 --[[
@@ -900,12 +897,12 @@ end
 ]]
 function Promise.prototype:catch(failureCallback)
 	assert(failureCallback == nil or type(failureCallback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:catch"))
-	return self:_andThen(debug.traceback(nil, 2), nil, failureCallback, false)
+	return self:_andThen(debug.traceback(nil :: any, 2), nil, failureCallback, false)
 end
 
 -- function Promise.prototype:tap(tapCallback)
 -- 	assert(type(tapCallback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:tap"))
--- 	return self:_andThen(debug.traceback(nil, 2), function(...)
+-- 	return self:_andThen(debug.traceback(nil :: any, 2), function(...)
 -- 		local callbackReturn = tapCallback(...)
 
 -- 		if Promise.is(callbackReturn) then
@@ -945,9 +942,9 @@ function Promise.prototype:tap(tapCallback, tapCatch)
 
 	if tapCatch then
 		tapCatch = createTapper(tapCatch)
-		return self:_andThen(debug.traceback(nil, 2), tapCallback, tapCatch, false)
+		return self:_andThen(debug.traceback(nil :: any, 2), tapCallback, tapCatch, false)
 	else
-		return self:_andThen(debug.traceback(nil, 2), tapCallback, nil, false)
+		return self:_andThen(debug.traceback(nil :: any, 2), tapCallback, nil, false)
 	end
 end
 
@@ -957,7 +954,7 @@ end
 function Promise.prototype:andThenCall(callback, ...)
 	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:andThenCall"))
 	local values = table.pack(...)
-	return self:_andThen(debug.traceback(nil, 2), function()
+	return self:_andThen(debug.traceback(nil :: any, 2), function()
 		return callback(table.unpack(values, 1, values.n))
 	end, nil, false)
 end
@@ -967,7 +964,7 @@ end
 ]]
 function Promise.prototype:andThenReturn(...)
 	local values = table.pack(...)
-	return self:_andThen(debug.traceback(nil, 2), function()
+	return self:_andThen(debug.traceback(nil :: any, 2), function()
 		return table.unpack(values, 1, values.n)
 	end, nil, false)
 end
@@ -1054,7 +1051,7 @@ end
 
 function Promise.prototype:finally(finallyHandler)
 	assert(finallyHandler == nil or type(finallyHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:finally"))
-	return self:_finally(debug.traceback(nil, 2), finallyHandler)
+	return self:_finally(debug.traceback(nil :: any, 2), finallyHandler)
 end
 
 --[[
@@ -1063,7 +1060,7 @@ end
 function Promise.prototype:finallyCall(callback, ...)
 	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:finallyCall"))
 	local values = table.pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
+	return self:_finally(debug.traceback(nil :: any, 2), function()
 		return callback(table.unpack(values, 1, values.n))
 	end)
 end
@@ -1073,7 +1070,7 @@ end
 ]]
 function Promise.prototype:finallyReturn(...)
 	local values = table.pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
+	return self:_finally(debug.traceback(nil :: any, 2), function()
 		return table.unpack(values, 1, values.n)
 	end)
 end
@@ -1083,7 +1080,7 @@ end
 ]]
 function Promise.prototype:done(finallyHandler)
 	assert(finallyHandler == nil or type(finallyHandler) == "function", string.format(ERROR_NON_FUNCTION, "Promise:done"))
-	return self:_finally(debug.traceback(nil, 2), finallyHandler, true)
+	return self:_finally(debug.traceback(nil :: any, 2), finallyHandler, true)
 end
 
 --[[
@@ -1092,7 +1089,7 @@ end
 function Promise.prototype:doneCall(callback, ...)
 	assert(type(callback) == "function", string.format(ERROR_NON_FUNCTION, "Promise:doneCall"))
 	local values = table.pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
+	return self:_finally(debug.traceback(nil :: any, 2), function()
 		return callback(table.unpack(values, 1, values.n))
 	end, true)
 end
@@ -1102,7 +1099,7 @@ end
 ]]
 function Promise.prototype:doneReturn(...)
 	local values = table.pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
+	return self:_finally(debug.traceback(nil :: any, 2), function()
 		return table.unpack(values, 1, values.n)
 	end, true)
 end
@@ -1334,7 +1331,7 @@ end
 	resolved, and rejected if it is not resolved.
 ]]
 function Promise.prototype:now(rejectionValue)
-	local traceback = debug.traceback(nil, 2)
+	local traceback = debug.traceback(nil :: any, 2)
 	if self._status == Promise.Status.Resolved then
 		return self:_andThen(traceback, function(...)
 			return ...
@@ -1374,7 +1371,7 @@ function Promise.fromEvent(event, predicate)
 		return true
 	end
 
-	return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
+	return Promise._new(debug.traceback(nil :: any, 2), function(resolve, _, onCancel)
 		local connection
 		local shouldDisconnect = false
 

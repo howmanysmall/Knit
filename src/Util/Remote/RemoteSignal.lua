@@ -21,12 +21,13 @@ local Ser = require(script.Parent.Parent.Ser)
 
 local IS_SERVER = RunService:IsServer()
 
-local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
-local Ser_SerializeArgs = Ser.SerializeArgs
-local Ser_UnpackArgs = Ser.UnpackArgs
 local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
+local Ser_SerializeArgs = Ser.SerializeArgs
+local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
+local Ser_UnpackArgs = Ser.UnpackArgs
 
 local RemoteSignal = {}
+RemoteSignal.ClassName = "RemoteSignal"
 RemoteSignal.__index = RemoteSignal
 
 function RemoteSignal.Is(object)
@@ -71,6 +72,10 @@ function RemoteSignal:Destroy()
 	self._remote:Destroy()
 	self._remote = nil
 	setmetatable(self, nil)
+end
+
+function RemoteSignal:__tostring()
+	return "RemoteSignal"
 end
 
 return RemoteSignal

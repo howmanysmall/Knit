@@ -1,4 +1,5 @@
-local FastEvent = {ClassName = "FastEvent"}
+local FastEvent = {}
+FastEvent.ClassName = "FastEvent"
 FastEvent.__index = FastEvent
 
 function FastEvent.new(PreallocateSize: number?)

@@ -1,9 +1,12 @@
 -- Janitor
--- pobammer
--- September 10, 2020
+-- Original by Validark
+-- Modifications by pobammer
+-- roblox-ts support by OverHash and Validark
+-- LinkToInstance fixed by Elttob.
 
+local RunService = game:GetService("RunService")
 local Promise = require(script.Parent.Promise)
-local Scheduler = require(script.Parent.Scheduler)
+local Heartbeat = RunService.Heartbeat
 
 local IndicesReference = newproxy(true)
 getmetatable(IndicesReference).__tostring = function()
@@ -15,6 +18,9 @@ getmetatable(LinkToInstanceIndex).__tostring = function()
 	return "LinkToInstanceIndex"
 end
 
+local NOT_A_PROMISE = "Invalid argument #1 to 'Janitor:AddPromise' (Promise expected, got %s (%s))"
+local METHOD_NOT_FOUND_ERROR = "Object %s doesn't have method %s, are you sure you want to add it? Traceback: %s"
+
 local Janitor = {
 	ClassName = "Janitor";
 	__index = {
@@ -23,12 +29,6 @@ local Janitor = {
 	};
 }
 
-local NOT_A_PROMISE = "Invalid argument #1 to 'Janitor:AddPromise' (Promise expected, got %s (%s))"
-local METHOD_NOT_FOUND_ERROR = "Object %s doesn't have method %s, are you sure you want to add it? Traceback: %s"
-
-local FastSpawn = Scheduler.FastSpawn
-local Wait = Scheduler.Wait
-
 local TypeDefaults = {
 	["function"] = true;
 	RBXScriptConnection = "Disconnect";
@@ -36,7 +36,7 @@ local TypeDefaults = {
 
 --[[**
 	Instantiates a new Janitor object.
-	@returns [Janitor]
+	@returns [t:Janitor]
 **--]]
 function Janitor.new()
 	return setmetatable({
@@ -47,8 +47,8 @@ end
 
 --[[**
 	Determines if the passed object is a Janitor.
-	@param [any] Object The object you are checking.
-	@returns [boolean] Whether or not the object is a Janitor.
+	@param [t:any] Object The object you are checking.
+	@returns [t:boolean] Whether or not the object is a Janitor.
 **--]]
 function Janitor.Is(Object)
 	return type(Object) == "table" and getmetatable(Object) == Janitor
@@ -56,10 +56,10 @@ end
 
 --[[**
 	Adds an `Object` to Janitor for later cleanup, where `MethodName` is the key of the method within `Object` which should be called at cleanup time. If the `MethodName` is `true` the `Object` itself will be called instead. If passed an index it will occupy a namespace which can be `Remove()`d or overwritten. Returns the `Object`.
-	@param [any] Object The object you want to clean up.
-	@param [string | true?] MethodName The name of the method that will be used to clean up. If not passed, it will first check if the object's type exists in TypeDefaults, and if that doesn't exist, it assumes `Destroy`.
-	@param [any?] Index The index that can be used to clean up the object manually.
-	@returns [any] The object that was passed.
+	@param [t:any] Object The object you want to clean up.
+	@param [t:string|true?] MethodName The name of the method that will be used to clean up. If not passed, it will first check if the object's type exists in TypeDefaults, and if that doesn't exist, it assumes `Destroy`.
+	@param [t:any?] Index The index that can be used to clean up the object manually.
+	@returns [t:any] The object that was passed.
 **--]]
 function Janitor.__index:Add(Object, MethodName, Index)
 	if Index then
@@ -87,18 +87,18 @@ end
 
 --[[**
 	Adds a promise to the janitor. If the janitor is cleaned up and the promise is not completed, the promise will be cancelled.
-	@param [Promise] PromiseObject The promise you want to add to the janitor.
-	@returns [Promise]
+	@param [t:Promise] PromiseObject The promise you want to add to the janitor.
+	@returns [t:Promise]
 **--]]
 function Janitor.__index:AddPromise(PromiseObject)
-	if not Promise.Is(PromiseObject) then
+	if not Promise.is(PromiseObject) then
 		error(string.format(NOT_A_PROMISE, typeof(PromiseObject), tostring(PromiseObject)))
 	end
 
-	if PromiseObject:GetStatus() == Promise.Status.Started then
+	if PromiseObject:getStatus() == Promise.Status.Started then
 		local Id = newproxy(false)
-		local NewPromise = self:Add(Promise.Resolve(PromiseObject), "Cancel", Id)
-		NewPromise:FinallyCall(self.Remove, self, Id)
+		local NewPromise = self:Add(Promise.resolve(PromiseObject), "cancel", Id)
+		NewPromise:finallyCall(self.Remove, self, Id)
 		return NewPromise
 	else
 		return PromiseObject
@@ -107,8 +107,8 @@ end
 
 --[[**
 	Cleans up whatever `Object` was set to this namespace by the 3rd parameter of `:Add()`.
-	@param [any] Index The index you want to remove.
-	@returns [Janitor] The same janitor, for chaining reasons.
+	@param [t:any] Index The index you want to remove.
+	@returns [t:Janitor] The same janitor, for chaining reasons.
 **--]]
 function Janitor.__index:Remove(Index)
 	local This = self[IndicesReference]
@@ -126,8 +126,6 @@ function Janitor.__index:Remove(Index)
 					local ObjectMethod = Object[MethodName]
 					if ObjectMethod then
 						ObjectMethod(Object)
-					else
-						warn("Failed to clean up:", Object)
 					end
 				end
 
@@ -143,8 +141,8 @@ end
 
 --[[**
 	Gets whatever object is stored with the given index, if it exists. This was added since Maid allows getting the task using `__index`.
-	@param [any] Index The index that the object is stored under.
-	@returns [any?] This will return the object if it is found, but it won't return anything if it doesn't exist.
+	@param [t:any] Index The index that the object is stored under.
+	@returns [t:any?] This will return the object if it is found, but it won't return anything if it doesn't exist.
 **--]]
 function Janitor.__index:Get(Index)
 	local This = self[IndicesReference]
@@ -155,12 +153,11 @@ end
 
 --[[**
 	Calls each Object's `MethodName` (or calls the Object if `MethodName == true`) and removes them from the Janitor. Also clears the namespace. This function is also called when you call a Janitor Object (so it can be used as a destructor callback).
-	@returns [void]
+	@returns [t:void]
 **--]]
 function Janitor.__index:Cleanup()
 	if not self.CurrentlyCleaning then
 		self.CurrentlyCleaning = nil
-
 		for Object, MethodName in next, self do
 			if Object == IndicesReference then
 				continue
@@ -172,8 +169,6 @@ function Janitor.__index:Cleanup()
 				local ObjectMethod = Object[MethodName]
 				if ObjectMethod then
 					ObjectMethod(Object)
-				else
-					warn("Failed to clean up:", Object)
 				end
 			end
 
@@ -195,7 +190,7 @@ end
 
 --[[**
 	Calls `:Cleanup()` and renders the Janitor unusable.
-	@returns [void]
+	@returns [t:void]
 **--]]
 function Janitor.__index:Destroy()
 	self:Cleanup()
@@ -212,69 +207,69 @@ Janitor.__call = Janitor.__index.Cleanup
 local Disconnect = {Connected = true}
 Disconnect.__index = Disconnect
 function Disconnect:Disconnect()
-	self.Connected = false
-	self.Connection:Disconnect()
+	if self.Connected then
+		self.Connected = false
+		self.Connection:Disconnect()
+	end
+end
+
+function Disconnect:__tostring()
+	return "Disconnect<" .. tostring(self.Connected) .. ">"
 end
 
 --[[**
 	"Links" this Janitor to an Instance, such that the Janitor will `Cleanup` when the Instance is `Destroyed()` and garbage collected. A Janitor may only be linked to one instance at a time, unless `AllowMultiple` is true. When called with a truthy `AllowMultiple` parameter, the Janitor will "link" the Instance without overwriting any previous links, and will also not be overwritable. When called with a falsy `AllowMultiple` parameter, the Janitor will overwrite the previous link which was also called with a falsy `AllowMultiple` parameter, if applicable.
-	@param [Instance] Object The instance you want to link the Janitor to.
-	@param [boolean?] AllowMultiple Whether or not to allow multiple links on the same Janitor.
-	@returns [RbxScriptConnection] A pseudo RBXScriptConnection that can be disconnected.
+	@param [t:Instance] Object The instance you want to link the Janitor to.
+	@param [t:boolean?] AllowMultiple Whether or not to allow multiple links on the same Janitor.
+	@returns [t:RbxScriptConnection] A pseudo RBXScriptConnection that can be disconnected.
 **--]]
 function Janitor.__index:LinkToInstance(Object, AllowMultiple)
-	local Reference = Instance.new("ObjectValue")
-	Reference.Value = Object
-
-	local ManualDisconnect = setmetatable({}, Disconnect)
 	local Connection
-	local function ChangedFunction(Obj, Par)
-		if not Reference.Value then
-			ManualDisconnect.Connected = false
-			return self:Cleanup()
-		elseif Obj == Reference.Value and not Par then
-			Obj = nil
-			Wait(0.03)
+	local IndexToUse = AllowMultiple and newproxy(false) or LinkToInstanceIndex
+	local IsNilParented = Object.Parent == nil
+	local ManualDisconnect = setmetatable({}, Disconnect)
 
-			if (not Reference.Value or not Reference.Value.Parent) and ManualDisconnect.Connected then
-				if not Connection.Connected then
-					ManualDisconnect.Connected = false
-					return self:Cleanup()
-				else
-					while true do
-						Wait(0.2)
-						if not ManualDisconnect.Connected then
-							return
-						elseif not Connection.Connected then
-							ManualDisconnect.Connected = false
-							return self:Cleanup()
-						elseif Reference.Value.Parent then
-							return
+	local function ChangedFunction(_DoNotUse, NewParent)
+		if ManualDisconnect.Connected then
+			_DoNotUse = nil
+			IsNilParented = NewParent == nil
+
+			if IsNilParented then
+				coroutine.wrap(function()
+					Heartbeat:Wait()
+					if not ManualDisconnect.Connected then
+						return
+					elseif not Connection.Connected then
+						self:Cleanup()
+					else
+						while IsNilParented and Connection.Connected and ManualDisconnect.Connected do
+							Heartbeat:Wait()
+						end
+
+						if ManualDisconnect.Connected and IsNilParented then
+							self:Cleanup()
 						end
 					end
-				end
+				end)()
 			end
 		end
 	end
 
 	Connection = Object.AncestryChanged:Connect(ChangedFunction)
 	ManualDisconnect.Connection = Connection
-	Object = nil
-	FastSpawn(ChangedFunction, Reference.Value, Reference.Value.Parent)
 
-	if AllowMultiple then
-		self:Add(ManualDisconnect, "Disconnect")
-	else
-		self:Add(ManualDisconnect, "Disconnect", LinkToInstanceIndex)
+	if IsNilParented then
+		ChangedFunction(nil, Object.Parent)
 	end
 
-	return ManualDisconnect
+	Object = nil
+	return self:Add(ManualDisconnect, "Disconnect", IndexToUse)
 end
 
 --[[**
 	Links several instances to a janitor, which is then returned.
-	@param [...Instance] ... All the instances you want linked.
-	@returns [Janitor] A janitor that can be used to manually disconnect all LinkToInstances.
+	@param [t:...Instance] ... All the instances you want linked.
+	@returns [t:Janitor] A janitor that can be used to manually disconnect all LinkToInstances.
 **--]]
 function Janitor.__index:LinkToInstances(...)
 	local ManualCleanup = Janitor.new()
@@ -285,24 +280,8 @@ function Janitor.__index:LinkToInstances(...)
 	return ManualCleanup
 end
 
---[[**
-	"Links" this Janitor to an Instance, such that the Janitor will `Cleanup` when the Instance is removed from the DataModel (not just `Destroyed`) and garbage collected. A Janitor may only be linked to one instance at a time, unless `AllowMultiple` is true. When called with a truthy `AllowMultiple` parameter, the Janitor will "link" the Instance without overwriting any previous links, and will also not be overwritable. When called with a falsy `AllowMultiple` parameter, the Janitor will overwrite the previous link which was also called with a falsy `AllowMultiple` parameter, if applicable.
-	@param [Instance] Object The instance you want to link the Janitor to.
-	@param [boolean?] AllowMultiple Whether or not to allow multiple links on the same Janitor.
-	@returns [RBXScriptConnection] A RBXScriptConnection that can be disconnected.
-**--]]
-function Janitor.__index:LinkToInstanceRemoval(Object: Instance, AllowMultiple: boolean?): RBXScriptConnection
-	local function AncestryChanged(_, Parent)
-		if not Parent then
-			self:Cleanup()
-		end
-	end
-
-	if AllowMultiple then
-		return self:Add(Object.AncestryChanged:Connect(AncestryChanged), "Disconnect")
-	else
-		return self:Add(Object.AncestryChanged:Connect(AncestryChanged), "Disconnect", LinkToInstanceIndex)
-	end
+function Janitor:__tostring()
+	return "Janitor"
 end
 
 return Janitor

@@ -16,6 +16,7 @@ local Signal = require(script.Parent.Signal)
 local Thread = require(script.Parent.Thread)
 
 local Streamable = {}
+Streamable.ClassName = "Streamable"
 Streamable.__index = Streamable
 
 function Streamable.new(parent, childName)
@@ -72,6 +73,10 @@ end
 function Streamable:Destroy()
 	self._janitor:Destroy()
 	setmetatable(self, nil)
+end
+
+function Streamable:__tostring()
+	return "Streamable"
 end
 
 return Streamable

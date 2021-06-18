@@ -95,6 +95,7 @@ local ATTRIBUTE_ID_NAME = "ComponentServerId"
 local DESCENDANT_WHITELIST = {Workspace, Players}
 
 local Component = {}
+Component.ClassName = "Component"
 Component.__index = Component
 
 local componentsByTag = {}
@@ -164,6 +165,129 @@ function Component.Auto(folder)
 	end)
 end
 
+local function startHeartbeatUpdate(this)
+	local self = this
+	local all = self._objects
+	self._heartbeatUpdate = self._lifecycleJanitor:Add(RunService.Heartbeat:Connect(function(dt)
+		for _, v in ipairs(all) do
+			v:HeartbeatUpdate(dt)
+		end
+	end), "Disconnect")
+end
+
+local function startSteppedUpdate(this)
+	local self = this
+	local all = self._objects
+	self._steppedUpdate = self._lifecycleJanitor:Add(RunService.Stepped:Connect(function(_, dt)
+		for _, v in ipairs(all) do
+			v:SteppedUpdate(dt)
+		end
+	end), "Disconnect")
+end
+
+local function startRenderUpdate(this)
+	local self = this
+	local all = self._objects
+	self._renderName = self._tag .. "RenderUpdate"
+	RunService:BindToRenderStep(self._renderName, self._renderPriority, function(dt)
+		for _, v in ipairs(all) do
+			v:RenderUpdate(dt)
+		end
+	end)
+
+	self._lifecycleJanitor:Add(function()
+		RunService:UnbindFromRenderStep(self._renderName)
+	end, true)
+end
+
+local function startLifecycle(this)
+	local self = this
+	self._lifecycle = true
+	if self._hasHeartbeatUpdate then
+		startHeartbeatUpdate(self)
+	end
+
+	if self._hasSteppedUpdate then
+		startSteppedUpdate(self)
+	end
+
+	if self._hasRenderUpdate then
+		startRenderUpdate(self)
+	end
+end
+
+local function stopLifecycle(this)
+	local self = this
+	self._lifecycle = false
+	self._lifecycleJanitor:Cleanup()
+end
+
+local function instanceAdded(this, instance)
+	local self = this
+	if self._instancesToObjects[instance] then
+		return
+	end
+
+	if not self._lifecycle then
+		startLifecycle(self)
+	end
+
+	self._nextId += 1
+	local id = self._tag .. tostring(self._nextId)
+	if IS_SERVER then
+		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
+	end
+
+	local obj = self._class.new(instance)
+	obj.Instance = instance
+	obj._id = id
+	self._instancesToObjects[instance] = obj
+	table.insert(self._objects, obj)
+
+	if self._hasInit then
+		Thread.Spawn(function()
+			if self._instancesToObjects[instance] ~= obj then
+				return
+			end
+
+			obj:Init()
+		end)
+	end
+
+	self.Added:Fire(obj)
+	return obj
+end
+
+local function instanceRemoved(this, instance)
+	local self = this
+	if not self._instancesToObjects[instance] then
+		return
+	end
+
+	self._instancesToObjects[instance] = nil
+	for i, obj in ipairs(self._objects) do
+		if obj.Instance == instance then
+			if self._hasDeinit then
+				obj:Deinit()
+			end
+
+			if IS_SERVER and instance.Parent and instance:GetAttribute(ATTRIBUTE_ID_NAME) ~= nil then
+				instance:SetAttribute(ATTRIBUTE_ID_NAME, nil)
+			end
+
+			self.Removed:Fire(obj)
+			obj:Destroy()
+			obj._destroyed = true
+			TableUtil.FastRemove(self._objects, i)
+			break
+		end
+	end
+
+	if #self._objects == 0 and self._lifecycle then
+		stopLifecycle(self)
+	end
+end
+
 function Component.new(tag, class, renderPriority, requireComponents)
 	assert(type(tag) == "string", "Argument #1 (tag) should be a string; got " .. type(tag))
 	assert(type(class) == "table", "Argument #2 (class) should be a table; got " .. type(class))
@@ -212,33 +336,33 @@ function Component.new(tag, class, renderPriority, requireComponents)
 
 		observeJanitor:Add(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
 			if IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance) then
-				self:_instanceAdded(instance)
+				instanceAdded(self, instance)
 			end
 		end), "Disconnect")
 
 		observeJanitor:Add(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
-			self:_instanceRemoved(instance)
+			instanceRemoved(self, instance)
 		end), "Disconnect")
 
 		for _, reqComp in ipairs(self._requireComponents) do
 			local comp = Component.FromTag(reqComp)
 			observeJanitor:Add(comp.Added:Connect(function(obj)
 				if CollectionService:HasTag(obj.Instance, tag) and HasRequiredComponents(obj.Instance) then
-					self:_instanceAdded(obj.Instance)
+					instanceAdded(self, obj.Instance)
 				end
 			end), "Disconnect")
 
 			observeJanitor:Add(comp.Removed:Connect(function(obj)
 				if CollectionService:HasTag(obj.Instance, tag) then
-					self:_instanceRemoved(obj.Instance)
+					instanceRemoved(self, obj.Instance)
 				end
 			end), "Disconnect")
 		end
 
 		observeJanitor:Add(function()
-			self:_stopLifecycle()
+			stopLifecycle(self)
 			for instance in next, self._instancesToObjects do
-				self:_instanceRemoved(instance)
+				instanceRemoved(self, instance)
 			end
 		end, true)
 
@@ -247,7 +371,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 			for _, instance in ipairs(CollectionService:GetTagged(tag)) do
 				if IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance) then
 					local c = b.Event:Connect(function()
-						self:_instanceAdded(instance)
+						instanceAdded(self, instance)
 					end)
 
 					b:Fire()
@@ -303,122 +427,6 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	end, true)
 
 	return self
-end
-
-function Component:_startHeartbeatUpdate()
-	local all = self._objects
-	self._heartbeatUpdate = self._lifecycleJanitor:Add(RunService.Heartbeat:Connect(function(dt)
-		for _, v in ipairs(all) do
-			v:HeartbeatUpdate(dt)
-		end
-	end), "Disconnect")
-end
-
-function Component:_startSteppedUpdate()
-	local all = self._objects
-	self._steppedUpdate = self._lifecycleJanitor:Add(RunService.Stepped:Connect(function(_, dt)
-		for _, v in ipairs(all) do
-			v:SteppedUpdate(dt)
-		end
-	end), "Disconnect")
-end
-
-function Component:_startRenderUpdate()
-	local all = self._objects
-	self._renderName = self._tag .. "RenderUpdate"
-	RunService:BindToRenderStep(self._renderName, self._renderPriority, function(dt)
-		for _, v in ipairs(all) do
-			v:RenderUpdate(dt)
-		end
-	end)
-
-	self._lifecycleJanitor:Add(function()
-		RunService:UnbindFromRenderStep(self._renderName)
-	end, true)
-end
-
-function Component:_startLifecycle()
-	self._lifecycle = true
-	if self._hasHeartbeatUpdate then
-		self:_startHeartbeatUpdate()
-	end
-
-	if self._hasSteppedUpdate then
-		self:_startSteppedUpdate()
-	end
-
-	if self._hasRenderUpdate then
-		self:_startRenderUpdate()
-	end
-end
-
-function Component:_stopLifecycle()
-	self._lifecycle = false
-	self._lifecycleJanitor:Cleanup()
-end
-
-function Component:_instanceAdded(instance)
-	if self._instancesToObjects[instance] then
-		return
-	end
-
-	if not self._lifecycle then
-		self:_startLifecycle()
-	end
-
-	self._nextId += 1
-	local id = self._tag .. tostring(self._nextId)
-	if IS_SERVER then
-		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
-	end
-
-	local obj = self._class.new(instance)
-	obj.Instance = instance
-	obj._id = id
-	self._instancesToObjects[instance] = obj
-	table.insert(self._objects, obj)
-
-	if self._hasInit then
-		Thread.Spawn(function()
-			if self._instancesToObjects[instance] ~= obj then
-				return
-			end
-
-			obj:Init()
-		end)
-	end
-
-	self.Added:Fire(obj)
-	return obj
-end
-
-function Component:_instanceRemoved(instance)
-	if not self._instancesToObjects[instance] then
-		return
-	end
-
-	self._instancesToObjects[instance] = nil
-	for i, obj in ipairs(self._objects) do
-		if obj.Instance == instance then
-			if self._hasDeinit then
-				obj:Deinit()
-			end
-
-			if IS_SERVER and instance.Parent and instance:GetAttribute(ATTRIBUTE_ID_NAME) ~= nil then
-				instance:SetAttribute(ATTRIBUTE_ID_NAME, nil)
-			end
-
-			self.Removed:Fire(obj)
-			obj:Destroy()
-			obj._destroyed = true
-			TableUtil.FastRemove(self._objects, i)
-			break
-		end
-	end
-
-	if #self._objects == 0 and self._lifecycle then
-		self:_stopLifecycle()
-	end
 end
 
 function Component:GetAll()
@@ -494,6 +502,10 @@ end
 function Component:Destroy()
 	self._janitor:Destroy()
 	setmetatable(self, nil)
+end
+
+function Component:__tostring()
+	return "Component"
 end
 
 return Component

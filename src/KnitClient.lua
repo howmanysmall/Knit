@@ -13,10 +13,10 @@
 local Players = game:GetService("Players")
 
 local KnitClient = {
-	Version = script.Parent.Version.Value;
-	Player = Players.LocalPlayer;
 	Controllers = {};
+	Player = Players.LocalPlayer;
 	Util = script.Parent.Util;
+	Version = script.Parent.Version.Value;
 }
 
 local ClientRemoteProperty = require(KnitClient.Util.Remote.ClientRemoteProperty)
@@ -34,9 +34,10 @@ local started = false
 local startedComplete = false
 local onStartedComplete = Instance.new("BindableEvent")
 
+local Promise_new = Promise.new
 local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
-local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
 local Ser_SerializeArgs = Ser.SerializeArgs
+local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
 
 local function BuildService(serviceName, folder)
 	local service = {}
@@ -49,7 +50,7 @@ local function BuildService(serviceName, folder)
 
 				service[rf.Name .. "Promise"] = function(_, ...)
 					local args = Ser_SerializeArgs(...)
-					return Promise.new(function(resolve)
+					return Promise_new(function(resolve)
 						resolve(Ser_DeserializeArgsAndUnpack(rf:InvokeServer(table.unpack(args, 1, args.n))))
 					end)
 				end
@@ -81,7 +82,7 @@ function KnitClient.CreateController(controller)
 	assert(type(controller) == "table", "Controller must be a table; got " .. type(controller))
 	assert(type(controller.Name) == "string", "Controller.Name must be a string; got " .. type(controller.Name))
 	assert(#controller.Name > 0, "Controller.Name must be a non-empty string")
-	assert(KnitClient.Controllers[controller.Name] == nil, "Service \"" .. controller.Name .. "\" already exists")
+	assert(KnitClient.Controllers[controller.Name] == nil, "Controller \"" .. controller.Name .. "\" already exists")
 	controller = TableUtil.Assign(controller, {_knit_is_controller = true})
 
 	KnitClient.Controllers[controller.Name] = controller
@@ -109,14 +110,14 @@ function KnitClient.Start()
 
 	started = true
 	local controllers = KnitClient.Controllers
-	return Promise.new(function(resolve)
+	return Promise_new(function(resolve)
 		-- Init:
 		local promisesStartControllers = {}
 		local length = 0
 		for _, controller in next, controllers do
 			if type(controller.KnitInit) == "function" then
 				length += 1
-				promisesStartControllers[length] = Promise.new(function(r)
+				promisesStartControllers[length] = Promise_new(function(r)
 					controller:KnitInit()
 					r()
 				end)

@@ -18,6 +18,7 @@ local Signal = require(script.Parent.Parent.Signal)
 local IS_SERVER = RunService:IsServer()
 
 local ClientRemoteProperty = {}
+ClientRemoteProperty.ClassName = "ClientRemoteProperty"
 ClientRemoteProperty.__index = ClientRemoteProperty
 
 function ClientRemoteProperty.new(object)
@@ -61,6 +62,10 @@ function ClientRemoteProperty:Destroy()
 	end
 
 	setmetatable(self, nil)
+end
+
+function ClientRemoteProperty:__tostring()
+	return "ClientRemoteProperty"
 end
 
 return ClientRemoteProperty

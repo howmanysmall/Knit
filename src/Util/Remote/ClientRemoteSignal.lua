@@ -21,6 +21,7 @@ local IS_SERVER = RunService:IsServer()
 -- Connection
 
 local Connection = {}
+Connection.ClassName = "Connection"
 Connection.__index = Connection
 
 function Connection.new(event, connection)
@@ -64,19 +65,20 @@ end
 
 Connection.Destroy = Connection.Disconnect
 
+function Connection:__tostring()
+	return "Connection"
+end
+
 -- End Connection
 --------------------------------------------------------------
 -- ClientRemoteSignal
 
 local ClientRemoteSignal = {}
+ClientRemoteSignal.ClassName = "ClientRemoteSignal"
 ClientRemoteSignal.__index = ClientRemoteSignal
 
 local Ser_SerializeArgsAndUnpack = Ser.SerializeArgsAndUnpack
 local Ser_DeserializeArgsAndUnpack = Ser.DeserializeArgsAndUnpack
-
-function ClientRemoteSignal.Is(object)
-	return type(object) == "table" and getmetatable(object) == ClientRemoteSignal
-end
 
 function ClientRemoteSignal.new(remoteEvent)
 	assert(not IS_SERVER, "ClientRemoteSignal can only be created on the client")
@@ -86,6 +88,10 @@ function ClientRemoteSignal.new(remoteEvent)
 		_remote = remoteEvent;
 		_connections = {};
 	}, ClientRemoteSignal)
+end
+
+function ClientRemoteSignal.Is(object)
+	return type(object) == "table" and getmetatable(object) == ClientRemoteSignal
 end
 
 function ClientRemoteSignal:Fire(...)
@@ -115,6 +121,10 @@ function ClientRemoteSignal:Destroy()
 	self._connections = nil
 	self._remote = nil
 	setmetatable(self, nil)
+end
+
+function ClientRemoteSignal:__tostring()
+	return "ClientRemoteSignal"
 end
 
 return ClientRemoteSignal

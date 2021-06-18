@@ -5,4 +5,4 @@ local SHOULD_USE_UNSAFE = false
 return setmetatable({
 	Safe = SchedulerSafe;
 	Unsafe = SchedulerUnsafe;
-}, SHOULD_USE_UNSAFE and {__index = SchedulerUnsafe} or {__index = SchedulerSafe})
+}, {__index = SHOULD_USE_UNSAFE and SchedulerUnsafe or SchedulerSafe})

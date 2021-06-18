@@ -52,9 +52,10 @@ local function CopyTable(t)
 end
 
 local function CopyTableShallow(t)
-	local tCopy = table.create(#t)
-	if #t > 0 then
-		table.move(t, 1, #t, 1, tCopy)
+	local length = #t
+	local tCopy = table.create(length)
+	if length > 0 then
+		table.move(t, 1, length, 1, tCopy)
 	else
 		for k, v in next, t do
 			tCopy[k] = v

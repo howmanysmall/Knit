@@ -1,12 +1,20 @@
+--!nonstrict
+--!optimize 2
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local IS_STUDIO = RunService:IsStudio()
+
 --[=[
 	@interface Middleware
-	.Inbound ClientMiddleware?
-	.Outbound ClientMiddleware?
+	@field Inbound ClientMiddleware?
+	@field Outbound ClientMiddleware?
 	@within KnitClient
 ]=]
 type Middleware = {
 	Inbound: ClientMiddleware?,
 	Outbound: ClientMiddleware?,
+	[any]: never,
 }
 
 --[=[
@@ -15,25 +23,25 @@ type Middleware = {
 
 	For more info, see [ClientComm](https://sleitnick.github.io/RbxUtil/api/ClientComm/) documentation.
 ]=]
-type ClientMiddlewareFn = (args: { any }) -> (boolean, ...any)
+type ClientMiddlewareFn = (args: {any}) -> (boolean, ...any)
 
 --[=[
 	@type ClientMiddleware {ClientMiddlewareFn}
 	@within KnitClient
 	An array of client middleware functions.
 ]=]
-type ClientMiddleware = { ClientMiddlewareFn }
+type ClientMiddleware = {ClientMiddlewareFn}
 
 --[=[
 	@type PerServiceMiddleware {[string]: Middleware}
 	@within KnitClient
 ]=]
-type PerServiceMiddleware = { [string]: Middleware }
+type PerServiceMiddleware = {[string]: Middleware}
 
 --[=[
 	@interface ControllerDef
-	.Name string
-	.[any] any
+	@field Name string
+	@field [any] any
 	@within KnitClient
 	Used to define a controller when creating it in `CreateController`.
 ]=]
@@ -44,8 +52,8 @@ type ControllerDef = {
 
 --[=[
 	@interface Controller
-	.Name string
-	.[any] any
+	@field Name string
+	@field [any] any
 	@within KnitClient
 ]=]
 type Controller = {
@@ -55,7 +63,7 @@ type Controller = {
 
 --[=[
 	@interface Service
-	.[any] any
+	@field [any] any
 	@within KnitClient
 ]=]
 type Service = {
@@ -64,9 +72,10 @@ type Service = {
 
 --[=[
 	@interface KnitOptions
-	.ServicePromises boolean?
-	.Middleware Middleware?
-	.PerServiceMiddleware PerServiceMiddleware?
+	@field ServicePromises boolean?
+	@field Middleware Middleware?
+	@field PerServiceMiddleware PerServiceMiddleware?
+	@field SpawnRunServiceFunctions "None" | "Defer" | "Spawn" | nil
 	@within KnitClient
 
 	- `ServicePromises` defaults to `true` and indicates if service methods use promises.
@@ -77,12 +86,15 @@ type KnitOptions = {
 	ServicePromises: boolean,
 	Middleware: Middleware?,
 	PerServiceMiddleware: PerServiceMiddleware?,
+	SpawnRunServiceFunctions: "None" | "Defer" | "Spawn" | nil,
+	[any]: never,
 }
 
 local defaultOptions: KnitOptions = {
-	ServicePromises = true,
-	Middleware = nil,
-	PerServiceMiddleware = {},
+	Middleware = nil;
+	PerServiceMiddleware = {};
+	ServicePromises = false;
+	SpawnRunServiceFunctions = "Spawn";
 }
 
 local selectedOptions = nil
@@ -99,7 +111,7 @@ local KnitClient = {}
 	@readonly
 	Reference to the LocalPlayer.
 ]=]
-KnitClient.Player = game:GetService("Players").LocalPlayer
+KnitClient.Player = Players.LocalPlayer
 
 --[=[
 	@prop Util Folder
@@ -112,12 +124,13 @@ KnitClient.Player = game:GetService("Players").LocalPlayer
 ]=]
 KnitClient.Util = (script.Parent :: Instance).Parent
 
-local Promise = require(KnitClient.Util.Promise)
 local Comm = require(KnitClient.Util.Comm)
+local Promise = require(KnitClient.Util.Promise)
+local ThreadUtilities = require(KnitClient.Util.ThreadUtilities)
 local ClientComm = Comm.ClientComm
 
-local controllers: { [string]: Controller } = {}
-local services: { [string]: Service } = {}
+local controllers: {[string]: Controller} = {}
+local services: {[string]: Service} = {}
 local servicesFolder = nil
 
 local started = false
@@ -177,14 +190,17 @@ end
 	end
 	```
 ]=]
-function KnitClient.CreateController(controllerDef: ControllerDef): Controller
-	assert(type(controllerDef) == "table", `Controller must be a table; got {type(controllerDef)}`)
-	assert(type(controllerDef.Name) == "string", `Controller.Name must be a string; got {type(controllerDef.Name)}`)
-	assert(#controllerDef.Name > 0, "Controller.Name must be a non-empty string")
-	assert(not DoesControllerExist(controllerDef.Name), `Controller {controllerDef.Name} already exists`)
-	assert(not started, `Controllers cannot be created after calling "Knit.Start()"`)
+function KnitClient.CreateController(controllerDefinition: ControllerDef): Controller
+	assert(type(controllerDefinition) == "table", `Controller must be a table; got {type(controllerDefinition)}`)
+	assert(
+		type(controllerDefinition.Name) == "string",
+		`Controller.Name must be a string; got {type(controllerDefinition.Name)}`
+	)
+	assert(#controllerDefinition.Name > 0, "Controller.Name must be a non-empty string")
+	assert(not DoesControllerExist(controllerDefinition.Name), `Controller {controllerDefinition.Name} already exists`)
+	assert(not started, "Controllers cannot be created after calling \"Knit.Start()\"")
 
-	local controller = controllerDef :: Controller
+	local controller = controllerDefinition :: Controller
 	controllers[controller.Name] = controller
 
 	return controller
@@ -197,16 +213,20 @@ end
 	Knit.AddControllers(somewhere.Controllers)
 	```
 ]=]
-function KnitClient.AddControllers(parent: Instance): { Controller }
-	assert(not started, `Controllers cannot be added after calling "Knit.Start()"`)
+function KnitClient.AddControllers(parent: Instance): {Controller}
+	assert(not started, "Controllers cannot be added after calling \"Knit.Start()\"")
 
 	local addedControllers = {}
-	for _, v in parent:GetChildren() do
-		if not v:IsA("ModuleScript") then
+	local length = 0
+	local require = require
+
+	for _, child in parent:GetChildren() do
+		if not child:IsA("ModuleScript") then
 			continue
 		end
 
-		table.insert(addedControllers, require(v))
+		length += 1
+		addedControllers[length] = require(child)
 	end
 
 	return addedControllers
@@ -215,16 +235,20 @@ end
 --[=[
 	Requires all the modules that are descendants of the given parent.
 ]=]
-function KnitClient.AddControllersDeep(parent: Instance): { Controller }
-	assert(not started, `Controllers cannot be added after calling "Knit.Start()"`)
+function KnitClient.AddControllersDeep(parent: Instance): {Controller}
+	assert(not started, "Controllers cannot be added after calling \"Knit.Start()\"")
 
 	local addedControllers = {}
-	for _, v in parent:GetDescendants() do
-		if not v:IsA("ModuleScript") then
+	local length = 0
+	local require = require
+
+	for _, descendant in parent:GetDescendants() do
+		if not descendant:IsA("ModuleScript") then
 			continue
 		end
 
-		table.insert(addedControllers, require(v))
+		length += 1
+		addedControllers[length] = require(descendant)
 	end
 
 	return addedControllers
@@ -312,7 +336,7 @@ end
 --[=[
 	Gets a table of all controllers.
 ]=]
-function KnitClient.GetControllers(): { [string]: Controller }
+function KnitClient.GetControllers(): {[string]: Controller}
 	assert(started, "Cannot call GetControllers until Knit has been started")
 
 	return controllers
@@ -347,14 +371,15 @@ function KnitClient.Start(options: KnitOptions?)
 	if options == nil then
 		selectedOptions = defaultOptions
 	else
-		assert(typeof(options) == "table", `KnitOptions should be a table or nil; got {typeof(options)}`)
+		assert(type(options) == "table", `KnitOptions should be a table or nil; got {typeof(options)}`)
 		selectedOptions = options
-		for k, v in defaultOptions do
-			if selectedOptions[k] == nil then
-				selectedOptions[k] = v
+		for key, value in defaultOptions do
+			if selectedOptions[key] == nil then
+				selectedOptions[key] = value
 			end
 		end
 	end
+
 	if type(selectedOptions.PerServiceMiddleware) ~= "table" then
 		selectedOptions.PerServiceMiddleware = {}
 	end
@@ -362,36 +387,177 @@ function KnitClient.Start(options: KnitOptions?)
 	return Promise.new(function(resolve)
 		-- Init:
 		local promisesStartControllers = {}
+		local length = 0
 
 		for _, controller in controllers do
-			if type(controller.KnitInit) == "function" then
-				table.insert(
-					promisesStartControllers,
-					Promise.new(function(r)
-						debug.setmemorycategory(controller.Name)
-						controller:KnitInit()
-						r()
-					end)
-				)
+			local knitInit = controller.KnitInit
+			if type(knitInit) == "function" then
+				length += 1
+				promisesStartControllers[length] = Promise.new(function(internalResolve)
+					debug.setmemorycategory(controller.Name)
+					if IS_STUDIO then
+						local success, exception = pcall(ThreadUtilities.NoYield, knitInit, controller)
+						if not success then
+							warn(`Failed to call {controller.Name}.KnitInit - {exception}`)
+						end
+					else
+						knitInit(controller)
+					end
+
+					internalResolve()
+				end)
 			end
 		end
 
 		resolve(Promise.all(promisesStartControllers))
 	end):andThen(function()
+		type StandardCallback = (deltaTime: number) -> ()
+		type SteppedCallback = (time: number, deltaTime: number) -> ()
+
+		local postSimulationQueue: {StandardCallback}? = nil
+		local preSimulationQueue: {StandardCallback}? = nil
+		local preAnimationQueue: {StandardCallback}? = nil
+		local preRenderQueue: {StandardCallback}? = nil
+
+		local heartbeatQueue: {StandardCallback}? = nil
+		local steppedQueue: {SteppedCallback}? = nil
+		local renderSteppedQueue: {StandardCallback}? = nil
+
+		type AddToQueue =
+			((queue: {StandardCallback}?, callback: StandardCallback) -> {StandardCallback})
+			& ((queue: {SteppedCallback}?, callback: SteppedCallback) -> {SteppedCallback})
+
+		local addToQueue: AddToQueue
+		function addToQueue(queue, callback)
+			if selectedOptions.SpawnRunServiceFunctions == "Spawn" then
+				local legacyCallback = callback
+				function callback(time, deltaTime)
+					ThreadUtilities.FastSpawn(legacyCallback, time, deltaTime)
+				end
+			elseif selectedOptions.SpawnRunServiceFunctions == "Defer" then
+				local legacyCallback = callback
+				function callback(time, deltaTime)
+					ThreadUtilities.FastDefer(legacyCallback, time, deltaTime)
+				end
+			end
+
+			if queue then
+				table.insert(queue, callback)
+				return queue
+			end
+
+			return {callback}
+		end
+
 		-- Start:
 		for _, controller in controllers do
-			if type(controller.KnitStart) == "function" then
-				task.spawn(function()
+			local knitStart = controller.KnitStart
+			if type(knitStart) == "function" then
+				ThreadUtilities.FastSpawn(function()
 					debug.setmemorycategory(controller.Name)
-					controller:KnitStart()
+					knitStart(controller)
 				end)
 			end
+
+			local onPostSimulation = controller.OnPostSimulation
+			if type(onPostSimulation) == "function" then
+				postSimulationQueue = addToQueue(postSimulationQueue, function(deltaTime)
+					onPostSimulation(controller, deltaTime)
+				end)
+			end
+			local onPreSimulation = controller.OnPreSimulation
+			if type(onPreSimulation) == "function" then
+				preSimulationQueue = addToQueue(preSimulationQueue, function(deltaTime)
+					onPreSimulation(controller, deltaTime)
+				end)
+			end
+			local onPreAnimation = controller.OnPreAnimation
+			if type(onPreAnimation) == "function" then
+				preAnimationQueue = addToQueue(preAnimationQueue, function(deltaTime)
+					onPreAnimation(controller, deltaTime)
+				end)
+			end
+			local onPreRender = controller.OnPreRender
+			if type(onPreRender) == "function" then
+				preRenderQueue = addToQueue(preRenderQueue, function(deltaTime)
+					onPreRender(controller, deltaTime)
+				end)
+			end
+
+			local onHeartbeat = controller.OnHeartbeat
+			if type(onHeartbeat) == "function" then
+				heartbeatQueue = addToQueue(heartbeatQueue, function(deltaTime)
+					onHeartbeat(controller, deltaTime)
+				end)
+			end
+			local onStepped = controller.OnStepped
+			if type(onStepped) == "function" then
+				steppedQueue = addToQueue(steppedQueue, function(time, deltaTime)
+					onStepped(controller, time, deltaTime)
+				end)
+			end
+			local onRenderStepped = controller.OnRenderStepped
+			if type(onRenderStepped) == "function" then
+				renderSteppedQueue = addToQueue(renderSteppedQueue, function(deltaTime)
+					onRenderStepped(controller, deltaTime)
+				end)
+			end
+		end
+
+		if postSimulationQueue then
+			RunService.PostSimulation:Connect(function(deltaTime)
+				for _, callback in postSimulationQueue do
+					callback(deltaTime)
+				end
+			end)
+		end
+		if preSimulationQueue then
+			RunService.PreSimulation:Connect(function(deltaTime)
+				for _, callback in preSimulationQueue do
+					callback(deltaTime)
+				end
+			end)
+		end
+		if preAnimationQueue then
+			RunService.PreAnimation:Connect(function(deltaTime)
+				for _, callback in preAnimationQueue do
+					callback(deltaTime)
+				end
+			end)
+		end
+		if preRenderQueue then
+			RunService.PreRender:Connect(function(deltaTime)
+				for _, callback in preRenderQueue do
+					callback(deltaTime)
+				end
+			end)
+		end
+		if heartbeatQueue then
+			RunService.Heartbeat:Connect(function(deltaTime)
+				for _, callback in heartbeatQueue do
+					callback(deltaTime)
+				end
+			end)
+		end
+		if steppedQueue then
+			RunService.Stepped:Connect(function(time, deltaTime)
+				for _, callback in steppedQueue do
+					callback(time, deltaTime)
+				end
+			end)
+		end
+		if renderSteppedQueue then
+			RunService.RenderStepped:Connect(function(deltaTime)
+				for _, callback in renderSteppedQueue do
+					callback(deltaTime)
+				end
+			end)
 		end
 
 		startedComplete = true
 		onStartedComplete:Fire()
 
-		task.defer(function()
+		ThreadUtilities.FastDefer(function()
 			onStartedComplete:Destroy()
 		end)
 	end)
@@ -410,11 +576,7 @@ end
 	```
 ]=]
 function KnitClient.OnStart()
-	if startedComplete then
-		return Promise.resolve()
-	else
-		return Promise.fromEvent(onStartedComplete.Event)
-	end
+	return if startedComplete then Promise.resolve() else Promise.fromEvent(onStartedComplete.Event)
 end
 
 return KnitClient

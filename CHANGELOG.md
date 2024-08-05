@@ -1,4 +1,11 @@
+## 1.8.0
+
+- Add `SpawnRunServiceFunctions` option to control how `RunService` functions are spawned.
+- Add a warning in Studio if you yield in `KnitInit`.
+- Add a way to connect `RunService` events for controllers and services.
+
 ## 1.7.0
+
 - Adds `Knit.GetServices()` function server-side
 - Adds `Knit.GetControllers()` function client-side
 - Freezes `services`/`controllers` tables so that they can be safely returned in the functions listed above.
